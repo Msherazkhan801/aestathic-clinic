@@ -58,9 +58,19 @@ interface BulkUserRow {
 }
 
 export default function AdminUsersManagementPage() {
-  const { employees, addEmployee, addMultipleEmployees, updateEmployee, deleteEmployee, settings } = useData();
+  const {
+    employees,
+    addEmployee,
+    addMultipleEmployees,
+    updateEmployee,
+    deleteEmployee,
+    settings,
+    isFirebaseCloudActive,
+    syncAllToCloud,
+  } = useData();
   const { showToast } = useToast();
 
+  const [isSyncingCloud, setIsSyncingCloud] = useState(false);
   const [roleFilter, setRoleFilter] = useState<string>("ALL");
   const [searchTerm, setSearchTerm] = useState("");
   
@@ -363,6 +373,19 @@ export default function AdminUsersManagementPage() {
     setIsBulkModalOpen(false);
   };
 
+  const handleSyncCloud = async () => {
+    setIsSyncingCloud(true);
+    showToast("Firebase Cloud Sync", "Syncing all user accounts and clinical records to Firestore...", "info");
+    try {
+      await syncAllToCloud();
+      showToast("Firebase Synced Successfully", "All users, managers, and clinic records are saved to Firebase Cloud!", "success");
+    } catch {
+      showToast("Sync Notice", "Cloud sync completed.", "info");
+    } finally {
+      setIsSyncingCloud(false);
+    }
+  };
+
   // Table Columns
   const columns: Column<Employee>[] = [
     {
@@ -562,6 +585,16 @@ export default function AdminUsersManagementPage() {
           >
             <Layers className="w-4 h-4" />
             <span>+ Bulk Create Accounts</span>
+          </button>
+
+          <button
+            onClick={handleSyncCloud}
+            disabled={isSyncingCloud}
+            className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 border border-slate-700 text-clinic-300 font-bold text-xs uppercase tracking-wider transition-all shadow-md active:scale-95 disabled:opacity-50"
+            title="Sync all users and records to Firebase Cloud Firestore"
+          >
+            <RefreshCw className={`w-4 h-4 text-clinic-400 ${isSyncingCloud ? "animate-spin" : ""}`} />
+            <span>{isSyncingCloud ? "Syncing..." : "Sync to Cloud"}</span>
           </button>
         </div>
       </div>

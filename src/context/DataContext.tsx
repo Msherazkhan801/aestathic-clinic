@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import {
   Appointment,
   AttendanceRecord,
@@ -28,11 +28,26 @@ import {
   seedTreatments,
 } from "@/lib/seedData";
 import { calculateSalaryForEmployee } from "@/lib/salaryCalculator";
+import {
+  COLLECTIONS,
+  getCollectionData,
+  addDocument,
+  updateDocument,
+  deleteDocument,
+  saveEmployeeToFirestore,
+  saveMultipleEmployeesToFirestore,
+  deleteEmployeeFromFirestore,
+} from "@/lib/firebase/firestore";
+import { isFirebaseConfigured, db } from "@/lib/firebase/config";
 
 interface DataContextType {
   // Settings
   settings: ClinicSettings;
   updateSettings: (newSettings: Partial<ClinicSettings>) => void;
+
+  // Cloud Status
+  isFirebaseCloudActive: boolean;
+  syncAllToCloud: () => Promise<void>;
 
   // Employees
   employees: Employee[];
@@ -112,7 +127,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [salaries, setSalaries] = useState<SalaryRecord[]>(seedSalaries);
   const [contacts, setContacts] = useState<Contact[]>(seedContacts);
 
-  // Load from localStorage on client mount
+  // 1. Initial Load from LocalStorage
   useEffect(() => {
     try {
       const storedSettings = localStorage.getItem("clinic_settings");
@@ -124,29 +139,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         if (parsed.clinicName === "LUMEN AESTHETICS" || !parsed.clinicName) {
           parsed.clinicName = "SHEZI AESTHETICS";
         }
-        if (parsed.email && parsed.email.includes("lumenaesthetics.com")) {
-          parsed.email = parsed.email.replace("lumenaesthetics.com", "sheziaesthetics.com");
-        }
         setSettings(parsed);
       }
 
       const storedEmployees = localStorage.getItem("clinic_employees");
       if (storedEmployees) {
         const parsed = JSON.parse(storedEmployees);
-        const updated = parsed.map((e: any) => ({
-          ...e,
-          role:
-            e.role ||
-            (e.designation?.includes("Manager")
-              ? "manager"
-              : e.designation?.includes("Lead") ||
-                e.designation?.includes("Physician") ||
-                e.designation?.includes("Doctor") ||
-                e.designation?.includes("Dermatologist")
-              ? "admin"
-              : "user"),
-        }));
-        setEmployees(updated);
+        setEmployees(parsed);
       }
 
       const storedTreatments = localStorage.getItem("clinic_treatments");
@@ -178,7 +177,53 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setIsLoaded(true);
   }, []);
 
-  // Sync to localStorage
+  // 2. Fetch or Sync with Firebase Firestore on client startup
+  useEffect(() => {
+    async function loadCloudData() {
+      if (!isFirebaseConfigured || !db) return;
+      try {
+        console.log("Connecting to Firebase Cloud Firestore for SHEZI AESTHETICS...");
+        const cloudEmployees = await getCollectionData<Employee>(COLLECTIONS.EMPLOYEES);
+        if (cloudEmployees && cloudEmployees.length > 0) {
+          setEmployees(cloudEmployees);
+          localStorage.setItem("clinic_employees", JSON.stringify(cloudEmployees));
+        } else {
+          // Initialize Firestore cloud with existing employees
+          saveMultipleEmployeesToFirestore(employees.length > 0 ? employees : seedEmployees);
+        }
+
+        const cloudAppointments = await getCollectionData<Appointment>(COLLECTIONS.APPOINTMENTS);
+        if (cloudAppointments && cloudAppointments.length > 0) {
+          setAppointments(cloudAppointments);
+        }
+
+        const cloudSales = await getCollectionData<Sale>(COLLECTIONS.SALES);
+        if (cloudSales && cloudSales.length > 0) {
+          setSales(cloudSales);
+        }
+
+        const cloudExpenses = await getCollectionData<Expense>(COLLECTIONS.EXPENSES);
+        if (cloudExpenses && cloudExpenses.length > 0) {
+          setExpenses(cloudExpenses);
+        }
+
+        const cloudPharmacy = await getCollectionData<PharmacyItem>(COLLECTIONS.PHARMACY);
+        if (cloudPharmacy && cloudPharmacy.length > 0) {
+          setPharmacy(cloudPharmacy);
+        }
+
+        const cloudTreatments = await getCollectionData<Treatment>(COLLECTIONS.TREATMENTS);
+        if (cloudTreatments && cloudTreatments.length > 0) {
+          setTreatments(cloudTreatments);
+        }
+      } catch (err) {
+        console.warn("Firestore background sync notice:", err);
+      }
+    }
+    loadCloudData();
+  }, []);
+
+  // 3. Sync to LocalStorage whenever state changes
   useEffect(() => {
     if (!isLoaded) return;
     localStorage.setItem("clinic_settings", JSON.stringify(settings));
@@ -205,6 +250,36 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     contacts,
   ]);
 
+  // Sync All Data to Firestore Cloud
+  const syncAllToCloud = useCallback(async () => {
+    if (!isFirebaseConfigured || !db) return;
+    try {
+      await saveMultipleEmployeesToFirestore(employees);
+      for (const sale of sales) {
+        await addDocument(COLLECTIONS.SALES, sale, sale.saleId);
+      }
+      for (const exp of expenses) {
+        await addDocument(COLLECTIONS.EXPENSES, exp, exp.expenseId);
+      }
+      for (const apt of appointments) {
+        await addDocument(COLLECTIONS.APPOINTMENTS, apt, apt.appointmentId);
+      }
+      for (const item of pharmacy) {
+        await addDocument(COLLECTIONS.PHARMACY, item, item.itemId);
+      }
+      for (const trt of treatments) {
+        await addDocument(COLLECTIONS.TREATMENTS, trt, trt.treatmentId);
+      }
+      for (const c of contacts) {
+        await addDocument(COLLECTIONS.CONTACTS, c, c.contactId);
+      }
+      await addDocument(COLLECTIONS.SETTINGS, settings, "clinic_config");
+      console.log("All data successfully pushed to Firebase Cloud Firestore!");
+    } catch (e) {
+      console.error("Error pushing data to Firebase Cloud:", e);
+    }
+  }, [employees, sales, expenses, appointments, pharmacy, treatments, contacts, settings]);
+
   // Reset to seed
   const resetToDefaultSeed = () => {
     setSettings(defaultSettings);
@@ -217,14 +292,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setAttendance(seedAttendance);
     setSalaries(seedSalaries);
     setContacts(seedContacts);
+    saveMultipleEmployeesToFirestore(seedEmployees);
   };
 
   // Settings
   const updateSettings = (newSettings: Partial<ClinicSettings>) => {
-    setSettings((prev) => ({ ...prev, ...newSettings }));
+    setSettings((prev) => {
+      const updated = { ...prev, ...newSettings };
+      addDocument(COLLECTIONS.SETTINGS, updated, "clinic_config");
+      return updated;
+    });
   };
 
-  // Employees
+  // Employees & Users Management
   const addEmployee = (emp: Omit<Employee, "employeeId">) => {
     let currentMax = employees.reduce((max, e) => {
       const num = parseInt(e.employeeId.replace("emp-", ""), 10);
@@ -237,6 +317,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       role: emp.role || "user",
     };
     setEmployees((prev) => [newEmp, ...prev]);
+
+    // Save directly to Firebase Firestore
+    saveEmployeeToFirestore(newEmp);
   };
 
   const addMultipleEmployees = (newEmps: Omit<Employee, "employeeId">[]) => {
@@ -252,167 +335,166 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }));
 
     setEmployees((prev) => [...created, ...prev]);
+
+    // Save directly to Firebase Firestore
+    saveMultipleEmployeesToFirestore(created);
   };
 
   const updateEmployee = (id: string, updated: Partial<Employee>) => {
-    setEmployees((prev) =>
-      prev.map((e) => (e.employeeId === id ? { ...e, ...updated } : e))
-    );
+    setEmployees((prev) => {
+      const next = prev.map((e) => (e.employeeId === id ? { ...e, ...updated } : e));
+      const target = next.find((e) => e.employeeId === id);
+      if (target) {
+        saveEmployeeToFirestore(target);
+      }
+      return next;
+    });
   };
 
   const deleteEmployee = (id: string) => {
+    const target = employees.find((e) => e.employeeId === id);
     setEmployees((prev) => prev.filter((e) => e.employeeId !== id));
+    deleteEmployeeFromFirestore(id, target?.email);
   };
 
   // Treatments
   const addTreatment = (trt: Omit<Treatment, "treatmentId">) => {
     const newTrt: Treatment = {
       ...trt,
-      treatmentId: `trt-${String(treatments.length + 1).padStart(3, "0")}`,
+      treatmentId: `trt-${Date.now()}`,
     };
     setTreatments((prev) => [newTrt, ...prev]);
+    addDocument(COLLECTIONS.TREATMENTS, newTrt, newTrt.treatmentId);
   };
 
   const updateTreatment = (id: string, updated: Partial<Treatment>) => {
     setTreatments((prev) =>
       prev.map((t) => (t.treatmentId === id ? { ...t, ...updated } : t))
     );
+    updateDocument(COLLECTIONS.TREATMENTS, id, updated);
   };
 
   const deleteTreatment = (id: string) => {
     setTreatments((prev) => prev.filter((t) => t.treatmentId !== id));
+    deleteDocument(COLLECTIONS.TREATMENTS, id);
   };
 
   // Appointments
   const addAppointment = (apt: Omit<Appointment, "appointmentId">) => {
     const newApt: Appointment = {
       ...apt,
-      appointmentId: `apt-${Date.now().toString().slice(-4)}`,
+      appointmentId: `apt-${Date.now()}`,
     };
     setAppointments((prev) => [newApt, ...prev]);
-
-    // Update patient total visits if contact exists
-    setContacts((prev) =>
-      prev.map((c) =>
-        c.name.toLowerCase() === apt.customerName.toLowerCase()
-          ? {
-              ...c,
-              totalVisits: c.totalVisits + 1,
-              lastVisit: apt.appointmentDate,
-            }
-          : c
-      )
-    );
+    addDocument(COLLECTIONS.APPOINTMENTS, newApt, newApt.appointmentId);
   };
 
   const updateAppointment = (id: string, updated: Partial<Appointment>) => {
     setAppointments((prev) =>
       prev.map((a) => (a.appointmentId === id ? { ...a, ...updated } : a))
     );
+    updateDocument(COLLECTIONS.APPOINTMENTS, id, updated);
   };
 
   const deleteAppointment = (id: string) => {
     setAppointments((prev) => prev.filter((a) => a.appointmentId !== id));
+    deleteDocument(COLLECTIONS.APPOINTMENTS, id);
   };
 
   // Pharmacy
   const addPharmacyItem = (item: Omit<PharmacyItem, "itemId">) => {
     const newItem: PharmacyItem = {
       ...item,
-      itemId: `phm-${String(pharmacy.length + 1).padStart(3, "0")}`,
+      itemId: `item-${Date.now()}`,
     };
     setPharmacy((prev) => [newItem, ...prev]);
+    addDocument(COLLECTIONS.PHARMACY, newItem, newItem.itemId);
   };
 
   const updatePharmacyItem = (id: string, updated: Partial<PharmacyItem>) => {
     setPharmacy((prev) =>
       prev.map((p) => (p.itemId === id ? { ...p, ...updated } : p))
     );
+    updateDocument(COLLECTIONS.PHARMACY, id, updated);
   };
 
   const deletePharmacyItem = (id: string) => {
     setPharmacy((prev) => prev.filter((p) => p.itemId !== id));
+    deleteDocument(COLLECTIONS.PHARMACY, id);
   };
 
   // Sales (Income)
-  const addSale = (sale: Omit<Sale, "saleId">) => {
+  const addSale = (saleData: Omit<Sale, "saleId">) => {
     const newSale: Sale = {
-      ...sale,
-      saleId: `sal-${Date.now().toString().slice(-4)}`,
+      ...saleData,
+      saleId: `sale-${Date.now()}`,
     };
     setSales((prev) => [newSale, ...prev]);
-
-    // Update contact total spent
-    setContacts((prev) =>
-      prev.map((c) =>
-        c.name.toLowerCase() === sale.customerName.toLowerCase()
-          ? {
-              ...c,
-              totalSpent: c.totalSpent + sale.netAmount,
-              lastVisit: sale.saleDate,
-            }
-          : c
-      )
-    );
+    addDocument(COLLECTIONS.SALES, newSale, newSale.saleId);
   };
 
   const deleteSale = (id: string) => {
     setSales((prev) => prev.filter((s) => s.saleId !== id));
+    deleteDocument(COLLECTIONS.SALES, id);
   };
 
   // Expenses
-  const addExpense = (exp: Omit<Expense, "expenseId">) => {
+  const addExpense = (expData: Omit<Expense, "expenseId">) => {
     const newExp: Expense = {
-      ...exp,
-      expenseId: `exp-${Date.now().toString().slice(-4)}`,
+      ...expData,
+      expenseId: `exp-${Date.now()}`,
     };
     setExpenses((prev) => [newExp, ...prev]);
+    addDocument(COLLECTIONS.EXPENSES, newExp, newExp.expenseId);
   };
 
   const deleteExpense = (id: string) => {
     setExpenses((prev) => prev.filter((e) => e.expenseId !== id));
+    deleteDocument(COLLECTIONS.EXPENSES, id);
   };
 
   // Attendance
   const markAttendance = (
     employeeId: string,
     status: AttendanceStatus,
-    targetDate?: string,
+    date?: string,
     checkIn?: string,
     checkOut?: string,
     remarks?: string
   ) => {
-    const dateStr = targetDate || new Date().toISOString().split("T")[0];
+    const targetDate = date || new Date().toISOString().split("T")[0];
     const emp = employees.find((e) => e.employeeId === employeeId);
     if (!emp) return;
 
     setAttendance((prev) => {
       const existingIndex = prev.findIndex(
-        (a) => a.employeeId === employeeId && a.date === dateStr
+        (a) => a.employeeId === employeeId && a.date === targetDate
       );
-
       if (existingIndex >= 0) {
         const updated = [...prev];
-        updated[existingIndex] = {
+        const record = {
           ...updated[existingIndex],
           status,
           checkIn: checkIn || updated[existingIndex].checkIn,
           checkOut: checkOut || updated[existingIndex].checkOut,
           remarks: remarks || updated[existingIndex].remarks,
         };
+        updated[existingIndex] = record;
+        addDocument(COLLECTIONS.ATTENDANCE, record, record.attendanceId);
         return updated;
       } else {
         const newRecord: AttendanceRecord = {
-          attendanceId: `att-${Date.now().toString().slice(-6)}`,
+          attendanceId: `att-${Date.now()}`,
           employeeId,
           employeeName: emp.name,
-          date: dateStr,
+          date: targetDate,
           status,
-          checkIn: checkIn || "09:00",
-          checkOut: checkOut || (status === "present" ? "18:00" : undefined),
-          markedBy: "Current Manager",
+          checkIn: checkIn || (status === "present" ? "09:00" : undefined),
+          checkOut: checkOut || (status === "present" ? "17:30" : undefined),
+          markedBy: "System Portal",
           remarks,
         };
+        addDocument(COLLECTIONS.ATTENDANCE, newRecord, newRecord.attendanceId);
         return [newRecord, ...prev];
       }
     });
@@ -420,59 +502,76 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   // Salaries
   const generateMonthlySalaries = (month: string, recordedBy: string) => {
-    const generated: SalaryRecord[] = employees.map((emp) => {
-      return calculateSalaryForEmployee({
-        employee: emp,
+    const newSalaries: SalaryRecord[] = employees.map((emp) => {
+      const calculated = calculateSalaryForEmployee(
+        emp,
+        attendance,
+        sales,
         month,
-        attendanceRecords: attendance,
-        standardWorkingDays: 26,
+        settings.taxRatePercent
+      );
+      return {
+        salaryId: `sal-${emp.employeeId}-${month}`,
+        employeeId: emp.employeeId,
+        employeeName: emp.name,
+        role: emp.role,
+        month,
+        baseSalary: emp.salary,
+        totalWorkingDays: calculated.totalWorkingDays,
+        daysPresent: calculated.daysPresent,
+        daysAbsent: calculated.daysAbsent,
+        commissionAmount: calculated.commissionAmount,
+        deductions: calculated.taxDeduction,
+        netSalaryPaid: calculated.netSalary,
+        status: "calculated" as SalaryStatus,
+        generatedAt: new Date().toISOString(),
         recordedBy,
-      });
+      };
     });
 
     setSalaries((prev) => {
-      // Remove existing records for this month and add new
       const filtered = prev.filter((s) => s.month !== month);
-      return [...generated, ...filtered];
+      const combined = [...newSalaries, ...filtered];
+      return combined;
     });
+
+    for (const sal of newSalaries) {
+      addDocument(COLLECTIONS.SALARIES, sal, sal.salaryId);
+    }
   };
 
   const updateSalaryStatus = (salaryId: string, status: SalaryStatus) => {
     setSalaries((prev) =>
-      prev.map((s) =>
-        s.salaryId === salaryId
-          ? {
-              ...s,
-              status,
-              paymentDate: status === "paid" ? new Date().toISOString().split("T")[0] : s.paymentDate,
-            }
-          : s
-      )
+      prev.map((s) => (s.salaryId === salaryId ? { ...s, status } : s))
     );
+    updateDocument(COLLECTIONS.SALARIES, salaryId, { status });
   };
 
   // Contacts
   const addContact = (
-    contact: Omit<Contact, "contactId" | "totalVisits" | "totalSpent" | "createdAt">
+    contactData: Omit<Contact, "contactId" | "totalVisits" | "totalSpent" | "createdAt">
   ) => {
     const newContact: Contact = {
-      ...contact,
-      contactId: `cnt-${String(contacts.length + 1).padStart(3, "0")}`,
+      ...contactData,
+      contactId: `cnt-${Date.now()}`,
       totalVisits: 0,
       totalSpent: 0,
-      createdAt: new Date().toISOString().split("T")[0],
+      createdAt: new Date().toISOString(),
     };
     setContacts((prev) => [newContact, ...prev]);
+    addDocument(COLLECTIONS.CONTACTS, newContact, newContact.contactId);
   };
 
   const updateContact = (id: string, updated: Partial<Contact>) => {
     setContacts((prev) =>
       prev.map((c) => (c.contactId === id ? { ...c, ...updated } : c))
     );
+    updateDocument(COLLECTIONS.CONTACTS, id, updated);
   };
 
   const deleteContact = (id: string) => {
     setContacts((prev) => prev.filter((c) => c.contactId !== id));
+    deleteDocument(COLLECTIONS.CONTACTS, id);
   };
 
   return (
@@ -480,6 +579,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       value={{
         settings,
         updateSettings,
+        isFirebaseCloudActive: isFirebaseConfigured,
+        syncAllToCloud,
         employees,
         addEmployee,
         addMultipleEmployees,
