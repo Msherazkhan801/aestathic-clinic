@@ -37,7 +37,7 @@ export function Sidebar() {
   // Define navigation items per role
   const adminNav = [
     { label: "Overview", href: "/admin", icon: LayoutDashboard },
-    { label: "Staff & Doctors", href: "/admin/employees", icon: Users },
+    { label: "Staff & User Accounts", href: "/admin/employees", icon: Users },
     { label: "Attendance Sheet", href: "/admin/attendance", icon: CalendarCheck },
     { label: "Income & Expenses", href: "/admin/finance", icon: DollarSign },
     { label: "Salaries & Payroll", href: "/admin/salaries", icon: CreditCard },
