@@ -37,6 +37,7 @@ interface DataContextType {
   // Employees
   employees: Employee[];
   addEmployee: (emp: Omit<Employee, "employeeId">) => void;
+  addMultipleEmployees: (newEmps: Omit<Employee, "employeeId">[]) => void;
   updateEmployee: (id: string, emp: Partial<Employee>) => void;
   deleteEmployee: (id: string) => void;
 
@@ -225,12 +226,32 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   // Employees
   const addEmployee = (emp: Omit<Employee, "employeeId">) => {
+    let currentMax = employees.reduce((max, e) => {
+      const num = parseInt(e.employeeId.replace("emp-", ""), 10);
+      return isNaN(num) ? max : Math.max(max, num);
+    }, employees.length);
+
     const newEmp: Employee = {
       ...emp,
-      employeeId: `emp-${String(employees.length + 1).padStart(3, "0")}`,
+      employeeId: `emp-${String(currentMax + 1).padStart(3, "0")}`,
       role: emp.role || "user",
     };
     setEmployees((prev) => [newEmp, ...prev]);
+  };
+
+  const addMultipleEmployees = (newEmps: Omit<Employee, "employeeId">[]) => {
+    let currentMax = employees.reduce((max, e) => {
+      const num = parseInt(e.employeeId.replace("emp-", ""), 10);
+      return isNaN(num) ? max : Math.max(max, num);
+    }, employees.length);
+
+    const created: Employee[] = newEmps.map((emp, index) => ({
+      ...emp,
+      employeeId: `emp-${String(currentMax + index + 1).padStart(3, "0")}`,
+      role: emp.role || "user",
+    }));
+
+    setEmployees((prev) => [...created, ...prev]);
   };
 
   const updateEmployee = (id: string, updated: Partial<Employee>) => {
@@ -461,6 +482,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         updateSettings,
         employees,
         addEmployee,
+        addMultipleEmployees,
         updateEmployee,
         deleteEmployee,
         treatments,
