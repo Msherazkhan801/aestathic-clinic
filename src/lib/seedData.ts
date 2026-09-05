@@ -28,7 +28,7 @@ export const defaultSettings: ClinicSettings = {
 export const seedEmployees: Employee[] = [
   {
     employeeId: "emp-001",
-    name: "Dr. Elena Vance, M.D.",
+    name: "Sheraz khan",
     email: "sherazkhan@admin.com",
     phone: "+1 (555) 234-5678",
     designation: "Lead Aesthetic Physician",
@@ -282,7 +282,7 @@ export const seedAppointments: Appointment[] = [
     procedureId: "trt-002",
     procedureName: "Botox Cosmetic (3 Target Areas)",
     employeeId: "emp-001",
-    employeeName: "Dr. Elena Vance, M.D.",
+    employeeName: "Sheraz khan",
     appointmentDate: "2026-09-05",
     appointmentTime: "10:30",
     status: "confirmed",
@@ -346,7 +346,7 @@ export const seedAppointments: Appointment[] = [
     procedureId: "trt-008",
     procedureName: "Profhilo Bio-Remodeling Hydration",
     employeeId: "emp-001",
-    employeeName: "Dr. Elena Vance, M.D.",
+    employeeName: "Sheraz khan",
     appointmentDate: "2026-09-06",
     appointmentTime: "11:00",
     status: "scheduled",
@@ -606,7 +606,7 @@ export const seedAttendance: AttendanceRecord[] = [
   {
     attendanceId: "att-today-001",
     employeeId: "emp-001",
-    employeeName: "Dr. Elena Vance, M.D.",
+    employeeName: "Sheraz khan",
     date: "2026-09-05",
     status: "present",
     checkIn: "08:55",
@@ -667,7 +667,7 @@ export const seedAttendance: AttendanceRecord[] = [
   {
     attendanceId: "att-yest-001",
     employeeId: "emp-001",
-    employeeName: "Dr. Elena Vance, M.D.",
+    employeeName: "Sheraz khan",
     date: "2026-09-04",
     status: "present",
     checkIn: "08:50",
@@ -729,7 +729,7 @@ export const seedSalaries: SalaryRecord[] = [
   {
     salaryId: "sal-emp-001-2026-08",
     employeeId: "emp-001",
-    employeeName: "Dr. Elena Vance, M.D.",
+    employeeName: "Sheraz khan",
     designation: "Lead Aesthetic Physician",
     month: "2026-08",
     baseSalary: 9500,

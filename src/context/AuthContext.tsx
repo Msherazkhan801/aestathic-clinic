@@ -25,10 +25,10 @@ export const DEMO_PERSONAS: Record<UserRole, DemoUserPersona> = {
   admin: {
     role: "admin",
     email: "sherazkhan@admin.com",
-    name: "Dr. Elena Vance, M.D.",
+    name: "Sheraz khan",
     title: "Lead Aesthetic Physician & Clinic Director",
     employeeId: "emp-001",
-    avatar: "https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&q=80&w=300",
+    avatar: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRxocBkqqjq7Pwe42XM94uU0IEac1S128FOAK2sVpgYfQ-qb9kZ_1mfZDc&s=10",
   },
   manager: {
     role: "manager",
@@ -36,7 +36,7 @@ export const DEMO_PERSONAS: Record<UserRole, DemoUserPersona> = {
     name: "Alexander Wright",
     title: "Clinic Manager & Finance Lead",
     employeeId: "emp-005",
-    avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=300",
+    avatar: "",
   },
   user: {
     role: "user",
@@ -44,7 +44,7 @@ export const DEMO_PERSONAS: Record<UserRole, DemoUserPersona> = {
     name: "Isabella Rossi",
     title: "Patient Concierge & Front Desk",
     employeeId: "emp-006",
-    avatar: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=300",
+    avatar: "",
   },
 };
 
