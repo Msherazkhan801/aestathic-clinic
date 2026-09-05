@@ -502,32 +502,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   // Salaries
   const generateMonthlySalaries = (month: string, recordedBy: string) => {
-    const newSalaries: SalaryRecord[] = employees.map((emp) => {
-      const calculated = calculateSalaryForEmployee(
-        emp,
-        attendance,
-        sales,
+    const newSalaries: SalaryRecord[] = employees.map((emp) =>
+      calculateSalaryForEmployee({
+        employee: emp,
         month,
-        settings.taxRatePercent
-      );
-      return {
-        salaryId: `sal-${emp.employeeId}-${month}`,
-        employeeId: emp.employeeId,
-        employeeName: emp.name,
-        role: emp.role,
-        month,
-        baseSalary: emp.salary,
-        totalWorkingDays: calculated.totalWorkingDays,
-        daysPresent: calculated.daysPresent,
-        daysAbsent: calculated.daysAbsent,
-        commissionAmount: calculated.commissionAmount,
-        deductions: calculated.taxDeduction,
-        netSalaryPaid: calculated.netSalary,
-        status: "calculated" as SalaryStatus,
-        generatedAt: new Date().toISOString(),
+        attendanceRecords: attendance,
         recordedBy,
-      };
-    });
+      })
+    );
 
     setSalaries((prev) => {
       const filtered = prev.filter((s) => s.month !== month);

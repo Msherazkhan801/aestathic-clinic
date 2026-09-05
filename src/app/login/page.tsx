@@ -25,7 +25,7 @@ export default function LoginPage() {
   const { loginWithEmail, isFirebaseActive } = useAuth();
   const { showToast } = useToast();
 
-  const [email, setEmail] = useState("admin@sheziaesthetics.com");
+  const [email, setEmail] = useState("sherazkhan@admin.com");
   const [password, setPassword] = useState("admin123");
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -120,7 +120,7 @@ export default function LoginPage() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@sheziaesthetics.com"
+                  placeholder="sherazkhan@admin.com"
                   className="w-full pl-10 pr-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-clinic-500 transition-colors"
                 />
               </div>

@@ -39,9 +39,9 @@ A comprehensive, multi-tier management system for aesthetic medicine clinics bui
 
 | Portal Role | Work Email (Login ID) | Password | Access Permissions |
 |---|---|---|---|
-| **🛡️ Admin** | `admin@sheziaesthetics.com` | `admin123` | Full clinical control, user & manager creation, P&L reports, payroll approval, settings |
-| **💼 Manager** | `alexander@sheziaesthetics.com` | `manager123` | Daily attendance marking, shift schedules, cashflow ledger, salary calculation |
-| **👤 User (Reception)** | `isabella@sheziaesthetics.com` | `user123` | Appointment booking, patient CRM directory, treatment price lookups, pharmacy dispensary |
+| **🛡️ Admin** | `sherazkhan@admin.com` | `admin@321` | Full clinical control, user & manager creation, P&L reports, payroll approval, settings |
+| **💼 Manager** | `salar@gmail.com` | `manager123` | Daily attendance marking, shift schedules, cashflow ledger, salary calculation |
+| **👤 User (Reception)** | `user@gmail.com` | `user123` | Appointment booking, patient CRM directory, treatment price lookups, pharmacy dispensary |
 
 ---
 

@@ -29,7 +29,7 @@ export const seedEmployees: Employee[] = [
   {
     employeeId: "emp-001",
     name: "Dr. Elena Vance, M.D.",
-    email: "dr.vance@sheziaesthetics.com",
+    email: "sherazkhan@admin.com",
     phone: "+1 (555) 234-5678",
     designation: "Lead Aesthetic Physician",
     salary: 9500,
@@ -39,6 +39,7 @@ export const seedEmployees: Employee[] = [
     isActive: true,
     specialization: "Injectables, Facial Sculpting & Thread Lifts",
     role: "admin",
+    password: "admin@321",
   },
   {
     employeeId: "emp-002",
@@ -85,7 +86,7 @@ export const seedEmployees: Employee[] = [
   {
     employeeId: "emp-005",
     name: "Alexander Wright",
-    email: "alexander@sheziaesthetics.com",
+    email: "salar@gmail.com",
     phone: "+1 (555) 678-9012",
     designation: "Clinic Manager",
     salary: 5800,
@@ -95,11 +96,12 @@ export const seedEmployees: Employee[] = [
     isActive: true,
     specialization: "Clinic Operations, Financials & Patient Experience",
     role: "manager",
+    password: "manager123",
   },
   {
     employeeId: "emp-006",
     name: "Isabella Rossi",
-    email: "isabella@sheziaesthetics.com",
+    email: "user@gmail.com",
     phone: "+1 (555) 789-0123",
     designation: "Front Desk Receptionist",
     salary: 3400,
@@ -109,6 +111,7 @@ export const seedEmployees: Employee[] = [
     isActive: true,
     specialization: "Patient Concierge, Scheduling & Billing",
     role: "user",
+    password: "user123",
   },
 ];
 

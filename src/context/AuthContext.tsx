@@ -24,7 +24,7 @@ export interface DemoUserPersona {
 export const DEMO_PERSONAS: Record<UserRole, DemoUserPersona> = {
   admin: {
     role: "admin",
-    email: "admin@sheziaesthetics.com",
+    email: "sherazkhan@admin.com",
     name: "Dr. Elena Vance, M.D.",
     title: "Lead Aesthetic Physician & Clinic Director",
     employeeId: "emp-001",
@@ -32,7 +32,7 @@ export const DEMO_PERSONAS: Record<UserRole, DemoUserPersona> = {
   },
   manager: {
     role: "manager",
-    email: "alexander@sheziaesthetics.com",
+    email: "salar@gmail.com",
     name: "Alexander Wright",
     title: "Clinic Manager & Finance Lead",
     employeeId: "emp-005",
@@ -40,7 +40,7 @@ export const DEMO_PERSONAS: Record<UserRole, DemoUserPersona> = {
   },
   user: {
     role: "user",
-    email: "isabella@sheziaesthetics.com",
+    email: "user@gmail.com",
     name: "Isabella Rossi",
     title: "Patient Concierge & Front Desk",
     employeeId: "emp-006",
@@ -157,17 +157,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       // 1. Check Fixed Default Admin Account
       if (
+        cleanEmail === "sherazkhan@admin.com" ||
         cleanEmail === "admin@sheziaesthetics.com" ||
         cleanEmail === "dr.vance@sheziaesthetics.com" ||
         cleanEmail === "admin"
       ) {
-        if (cleanPass === "admin123" || cleanPass === "shezi123" || cleanPass === "admin") {
+        if (
+          cleanPass === "admin@321" ||
+          cleanPass === "admin123" ||
+          cleanPass === "shezi123" ||
+          cleanPass === "admin"
+        ) {
           const persona = DEMO_PERSONAS.admin;
           setRole("admin");
           localStorage.setItem("aesthetic_active_role", "admin");
           const u: UserProfile = {
             uid: "usr-admin",
-            email: "admin@sheziaesthetics.com",
+            email: "sherazkhan@admin.com",
             displayName: persona.name,
             role: "admin",
             employeeId: "emp-001",
@@ -181,14 +187,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setIsLoading(false);
           return {
             success: false,
-            error: "Incorrect Admin password. (Default password is: admin123)",
+            error: "Incorrect Admin password. (Password: admin@321)",
           };
         }
       }
 
       // 2. Check Fixed Default Manager Account
       if (
-        cleanEmail === "alexander@sheziaesthetics.com" ||
+        cleanEmail === "salar@gmail.com" ||
         cleanEmail === "manager@sheziaesthetics.com" ||
         cleanEmail === "manager"
       ) {
@@ -198,7 +204,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           localStorage.setItem("aesthetic_active_role", "manager");
           const u: UserProfile = {
             uid: "usr-manager",
-            email: "alexander@sheziaesthetics.com",
+            email: "salar@gmail.com",
             displayName: persona.name,
             role: "manager",
             employeeId: "emp-005",
@@ -219,7 +225,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // 3. Check Fixed Default Reception / User Account
       if (
-        cleanEmail === "isabella@sheziaesthetics.com" ||
+        cleanEmail === "user@gmail.com" ||
         cleanEmail === "user@sheziaesthetics.com" ||
         cleanEmail === "reception@sheziaesthetics.com" ||
         cleanEmail === "user"
@@ -230,7 +236,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           localStorage.setItem("aesthetic_active_role", "user");
           const u: UserProfile = {
             uid: "usr-user",
-            email: "isabella@sheziaesthetics.com",
+            email: "user@gmail.com",
             displayName: persona.name,
             role: "user",
             employeeId: "emp-006",

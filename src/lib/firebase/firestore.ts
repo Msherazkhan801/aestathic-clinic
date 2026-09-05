@@ -27,9 +27,10 @@ export const COLLECTIONS = {
 } as const;
 
 export async function getCollectionData<T>(collectionName: string): Promise<T[]> {
-  if (!isFirebaseConfigured || !db) return [];
+  const firestore = db;
+  if (!isFirebaseConfigured || !firestore) return [];
   try {
-    const colRef = collection(db, collectionName);
+    const colRef = collection(firestore, collectionName);
     const snapshot = await getDocs(colRef);
     return snapshot.docs.map((d) => ({ ...d.data() })) as T[];
   } catch (error) {
@@ -43,14 +44,15 @@ export async function addDocument<T extends object>(
   data: T,
   customId?: string
 ): Promise<string> {
-  if (!isFirebaseConfigured || !db) return customId || `local-${Date.now()}`;
+  const firestore = db;
+  if (!isFirebaseConfigured || !firestore) return customId || `local-${Date.now()}`;
   try {
     if (customId) {
-      const docRef = doc(db, collectionName, customId);
+      const docRef = doc(firestore, collectionName, customId);
       await setDoc(docRef, data, { merge: true });
       return customId;
     } else {
-      const colRef = collection(db, collectionName);
+      const colRef = collection(firestore, collectionName);
       const docRef = await addDoc(colRef, data);
       return docRef.id;
     }
@@ -61,15 +63,16 @@ export async function addDocument<T extends object>(
 }
 
 export async function saveEmployeeToFirestore(emp: Employee): Promise<void> {
-  if (!isFirebaseConfigured || !db) return;
+  const firestore = db;
+  if (!isFirebaseConfigured || !firestore) return;
   try {
     // Save to employees collection
-    const empRef = doc(db, COLLECTIONS.EMPLOYEES, emp.employeeId);
+    const empRef = doc(firestore, COLLECTIONS.EMPLOYEES, emp.employeeId);
     await setDoc(empRef, emp, { merge: true });
 
     // Also save user auth record to users collection
     const userDocId = emp.email.toLowerCase().replace(/[^a-zA-Z0-9]/g, "_");
-    const userRef = doc(db, COLLECTIONS.USERS, userDocId);
+    const userRef = doc(firestore, COLLECTIONS.USERS, userDocId);
     await setDoc(
       userRef,
       {
@@ -92,15 +95,16 @@ export async function saveEmployeeToFirestore(emp: Employee): Promise<void> {
 }
 
 export async function saveMultipleEmployeesToFirestore(emps: Employee[]): Promise<void> {
-  if (!isFirebaseConfigured || !db || emps.length === 0) return;
+  const firestore = db;
+  if (!isFirebaseConfigured || !firestore || emps.length === 0) return;
   try {
-    const batch = writeBatch(db);
+    const batch = writeBatch(firestore);
     emps.forEach((emp) => {
-      const empRef = doc(db, COLLECTIONS.EMPLOYEES, emp.employeeId);
+      const empRef = doc(firestore, COLLECTIONS.EMPLOYEES, emp.employeeId);
       batch.set(empRef, emp, { merge: true });
 
       const userDocId = emp.email.toLowerCase().replace(/[^a-zA-Z0-9]/g, "_");
-      const userRef = doc(db, COLLECTIONS.USERS, userDocId);
+      const userRef = doc(firestore, COLLECTIONS.USERS, userDocId);
       batch.set(
         userRef,
         {
@@ -125,14 +129,15 @@ export async function saveMultipleEmployeesToFirestore(emps: Employee[]): Promis
 }
 
 export async function deleteEmployeeFromFirestore(employeeId: string, email?: string): Promise<void> {
-  if (!isFirebaseConfigured || !db) return;
+  const firestore = db;
+  if (!isFirebaseConfigured || !firestore) return;
   try {
-    const empRef = doc(db, COLLECTIONS.EMPLOYEES, employeeId);
+    const empRef = doc(firestore, COLLECTIONS.EMPLOYEES, employeeId);
     await deleteDoc(empRef);
 
     if (email) {
       const userDocId = email.toLowerCase().replace(/[^a-zA-Z0-9]/g, "_");
-      const userRef = doc(db, COLLECTIONS.USERS, userDocId);
+      const userRef = doc(firestore, COLLECTIONS.USERS, userDocId);
       await deleteDoc(userRef);
     }
   } catch (error) {
@@ -145,9 +150,10 @@ export async function updateDocument<T extends object>(
   docId: string,
   data: Partial<T>
 ): Promise<boolean> {
-  if (!isFirebaseConfigured || !db) return true;
+  const firestore = db;
+  if (!isFirebaseConfigured || !firestore) return true;
   try {
-    const docRef = doc(db, collectionName, docId);
+    const docRef = doc(firestore, collectionName, docId);
     await updateDoc(docRef, data as Record<string, unknown>);
     return true;
   } catch (error) {
@@ -160,9 +166,10 @@ export async function deleteDocument(
   collectionName: string,
   docId: string
 ): Promise<boolean> {
-  if (!isFirebaseConfigured || !db) return true;
+  const firestore = db;
+  if (!isFirebaseConfigured || !firestore) return true;
   try {
-    const docRef = doc(db, collectionName, docId);
+    const docRef = doc(firestore, collectionName, docId);
     await deleteDoc(docRef);
     return true;
   } catch (error) {
