@@ -1,0 +1,90 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check role in custom claims or user profile doc
+    function isAdmin() {
+      return request.auth != null && (
+        request.auth.token.role == 'admin' ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+      );
+    }
+
+    function isManager() {
+      return request.auth != null && (
+        isAdmin() ||
+        request.auth.token.role == 'manager' ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'manager'
+      );
+    }
+
+    function isUser() {
+      return request.auth != null;
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow read: if isUser();
+      allow write: if isAdmin() || request.auth.uid == userId;
+    }
+
+    // Employees Collection (Admin full, Manager can read and update shifts)
+    match /employees/{employeeId} {
+      allow read: if isManager();
+      allow create, delete: if isAdmin();
+      allow update: if isManager();
+    }
+
+    // Attendance Collection (Admin & Manager full, User read own)
+    match /attendance/{attendanceId} {
+      allow read: if isUser();
+      allow write: if isManager();
+    }
+
+    // Appointments Collection (Admin full, User full, Manager read-only)
+    match /appointments/{appointmentId} {
+      allow read: if isUser();
+      allow write: if isUser();
+    }
+
+    // Treatments / Procedures Catalog (Admin & User full, Manager read-only)
+    match /treatments/{treatmentId} {
+      allow read: if isUser();
+      allow write: if isAdmin() || isUser();
+    }
+
+    // Pharmacy / Inventory (Admin & User full, Manager read-only)
+    match /pharmacy/{itemId} {
+      allow read: if isUser();
+      allow write: if isAdmin() || isUser();
+    }
+
+    // Sales / Income Ledger (Admin & Manager full, User view/create for bookings)
+    match /sales/{saleId} {
+      allow read: if isManager();
+      allow write: if isManager() || isUser();
+    }
+
+    // Expenses (Admin & Manager full)
+    match /expenses/{expenseId} {
+      allow read, write: if isManager();
+    }
+
+    // Salaries / Payroll (Admin & Manager full)
+    match /salaries/{salaryId} {
+      allow read, write: if isManager();
+    }
+
+    // Contacts / Patients CRM (Admin & User full, Manager read-only)
+    match /contacts/{contactId} {
+      allow read: if isUser();
+      allow write: if isUser() || isAdmin();
+    }
+
+    // Clinic Settings (Admin write, all read)
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}
