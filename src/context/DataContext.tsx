@@ -76,7 +76,7 @@ interface DataContextType {
 
   // Sales (Income)
   sales: Sale[];
-  addSale: (sale: Omit<Sale, "saleId">) => void;
+  addSale: (sale: Omit<Sale, "saleId">) => Sale;
   deleteSale: (id: string) => void;
 
   // Expenses
@@ -216,6 +216,26 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         if (cloudTreatments && cloudTreatments.length > 0) {
           setTreatments(cloudTreatments);
         }
+
+        const cloudContacts = await getCollectionData<Contact>(COLLECTIONS.CONTACTS);
+        if (cloudContacts && cloudContacts.length > 0) {
+          setContacts(cloudContacts);
+        }
+
+        const cloudAttendance = await getCollectionData<AttendanceRecord>(COLLECTIONS.ATTENDANCE);
+        if (cloudAttendance && cloudAttendance.length > 0) {
+          setAttendance(cloudAttendance);
+        }
+
+        const cloudSalaries = await getCollectionData<SalaryRecord>(COLLECTIONS.SALARIES);
+        if (cloudSalaries && cloudSalaries.length > 0) {
+          setSalaries(cloudSalaries);
+        }
+
+        const cloudSettings = await getCollectionData<ClinicSettings>(COLLECTIONS.SETTINGS);
+        if (cloudSettings && cloudSettings.length > 0) {
+          setSettings(cloudSettings[0]);
+        }
       } catch (err) {
         console.warn("Firestore background sync notice:", err);
       }
@@ -273,15 +293,21 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       for (const c of contacts) {
         await addDocument(COLLECTIONS.CONTACTS, c, c.contactId);
       }
+      for (const att of attendance) {
+        await addDocument(COLLECTIONS.ATTENDANCE, att, att.attendanceId);
+      }
+      for (const sal of salaries) {
+        await addDocument(COLLECTIONS.SALARIES, sal, sal.salaryId);
+      }
       await addDocument(COLLECTIONS.SETTINGS, settings, "clinic_config");
       console.log("All data successfully pushed to Firebase Cloud Firestore!");
     } catch (e) {
       console.error("Error pushing data to Firebase Cloud:", e);
     }
-  }, [employees, sales, expenses, appointments, pharmacy, treatments, contacts, settings]);
+  }, [employees, sales, expenses, appointments, pharmacy, treatments, contacts, attendance, salaries, settings]);
 
-  // Reset to seed
-  const resetToDefaultSeed = () => {
+  // Reset to seed & clean DB
+  const resetToDefaultSeed = async () => {
     setSettings(defaultSettings);
     setEmployees(seedEmployees);
     setTreatments(seedTreatments);
@@ -292,7 +318,25 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setAttendance(seedAttendance);
     setSalaries(seedSalaries);
     setContacts(seedContacts);
-    saveMultipleEmployeesToFirestore(seedEmployees);
+
+    localStorage.setItem("clinic_settings", JSON.stringify(defaultSettings));
+    localStorage.setItem("clinic_employees", JSON.stringify(seedEmployees));
+    localStorage.setItem("clinic_treatments", JSON.stringify(seedTreatments));
+    localStorage.setItem("clinic_appointments", JSON.stringify(seedAppointments));
+    localStorage.setItem("clinic_pharmacy", JSON.stringify(seedPharmacy));
+    localStorage.setItem("clinic_sales", JSON.stringify(seedSales));
+    localStorage.setItem("clinic_expenses", JSON.stringify(seedExpenses));
+    localStorage.setItem("clinic_attendance", JSON.stringify(seedAttendance));
+    localStorage.setItem("clinic_salaries", JSON.stringify(seedSalaries));
+    localStorage.setItem("clinic_contacts", JSON.stringify(seedContacts));
+
+    if (isFirebaseConfigured && db) {
+      try {
+        await fetch("/api/seed-db");
+      } catch (err) {
+        console.warn("API seed fallback:", err);
+      }
+    }
   };
 
   // Settings
@@ -424,13 +468,86 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   };
 
   // Sales (Income)
-  const addSale = (saleData: Omit<Sale, "saleId">) => {
+  const addSale = (saleData: Omit<Sale, "saleId">): Sale => {
+    // 1. Calculate Cost Price and Profit if not already supplied
+    let calculatedCost = saleData.totalCost ?? 0;
+    let items = saleData.items;
+
+    if (items && items.length > 0) {
+      calculatedCost = items.reduce(
+        (sum, it) => sum + (it.costPrice || 0) * (it.quantity || 1),
+        0
+      );
+    } else if (saleData.procedureId) {
+      const trt = treatments.find((t) => t.treatmentId === saleData.procedureId);
+      calculatedCost = trt?.costPrice || 0;
+    }
+
+    const calculatedProfit =
+      saleData.profit !== undefined
+        ? saleData.profit
+        : Math.max(0, saleData.netAmount - calculatedCost);
+
     const newSale: Sale = {
       ...saleData,
       saleId: `sale-${Date.now()}`,
+      totalCost: calculatedCost,
+      profit: calculatedProfit,
     };
+
+    // 2. Add to sales list
     setSales((prev) => [newSale, ...prev]);
     addDocument(COLLECTIONS.SALES, newSale, newSale.saleId);
+
+    // 3. Deduct stock from pharmacy for any medicine items sold
+    if (items && items.length > 0) {
+      const medicineItems = items.filter((it) => it.type === "medicine");
+      if (medicineItems.length > 0) {
+        setPharmacy((prev) => {
+          const updatedPharmacy = prev.map((p) => {
+            const soldMatch = medicineItems.find((m) => m.id === p.itemId);
+            if (soldMatch) {
+              const newQty = Math.max(0, p.quantity - soldMatch.quantity);
+              updateDocument(COLLECTIONS.PHARMACY, p.itemId, { quantity: newQty });
+              return { ...p, quantity: newQty };
+            }
+            return p;
+          });
+          return updatedPharmacy;
+        });
+      }
+    }
+
+    // 4. Update Patient CRM stats if patient exists
+    if (saleData.customerName || saleData.customerPhone) {
+      setContacts((prev) => {
+        const contactIndex = prev.findIndex(
+          (c) =>
+            (saleData.customerPhone && c.phone === saleData.customerPhone) ||
+            c.name.toLowerCase() === saleData.customerName.toLowerCase()
+        );
+        if (contactIndex >= 0) {
+          const updated = [...prev];
+          const matched = updated[contactIndex];
+          const updatedContact = {
+            ...matched,
+            totalVisits: (matched.totalVisits || 0) + 1,
+            totalSpent: (matched.totalSpent || 0) + saleData.netAmount,
+            lastVisit: saleData.saleDate,
+          };
+          updated[contactIndex] = updatedContact;
+          updateDocument(COLLECTIONS.CONTACTS, matched.contactId, {
+            totalVisits: updatedContact.totalVisits,
+            totalSpent: updatedContact.totalSpent,
+            lastVisit: updatedContact.lastVisit,
+          });
+          return updated;
+        }
+        return prev;
+      });
+    }
+
+    return newSale;
   };
 
   const deleteSale = (id: string) => {

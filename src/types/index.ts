@@ -63,7 +63,8 @@ export interface Treatment {
   treatmentId: string;
   name: string;
   description: string;
-  price: number;
+  price: number; // selling price
+  costPrice?: number; // consumable / buy cost
   duration: number; // minutes
   category: TreatmentCategory;
   isActive: boolean;
@@ -123,17 +124,44 @@ export type PaymentMethod =
   | 'insurance'
   | 'digital_wallet';
 
+export type SaleType = 'procedure' | 'medicine' | 'mixed';
+
+export interface SaleItem {
+  id: string; // treatmentId or itemId
+  name: string;
+  type: 'procedure' | 'medicine';
+  quantity: number;
+  unitPrice: number; // selling price per unit
+  costPrice: number; // actual buy / supply price per unit
+  totalAmount: number; // quantity * unitPrice
+  totalCost: number; // quantity * costPrice
+  profit: number; // totalAmount - totalCost
+  unit?: string; // e.g. "vials", "bottles", "session"
+  batchNumber?: string;
+}
+
 export interface Sale {
   saleId: string;
   invoiceNumber: string;
   appointmentId?: string;
   customerName: string;
   customerPhone: string;
-  procedureId: string;
+  customerEmail?: string;
+
+  // Summary title / fallback for backwards compatibility
+  procedureId?: string;
   procedureName: string;
-  amount: number;
-  discount: number;
-  netAmount: number;
+
+  // Itemized support
+  saleType?: SaleType; // 'procedure' | 'medicine' | 'mixed'
+  items?: SaleItem[]; // full list of procedures & medicines in this invoice
+
+  amount: number; // gross selling amount before discount
+  discount: number; // discount granted
+  netAmount: number; // actual revenue collected from customer
+  totalCost?: number; // total actual buy / cost price of all items
+  profit?: number; // netAmount - totalCost (or sum of item profits - discount)
+
   paymentMethod: PaymentMethod;
   saleDate: string; // YYYY-MM-DD
   recordedBy: string;

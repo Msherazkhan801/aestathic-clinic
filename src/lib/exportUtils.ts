@@ -11,6 +11,8 @@ interface ClinicReportExportData {
   sales: Sale[];
   expenses: Expense[];
   totalIncome: number;
+  totalCost?: number;
+  grossProfit?: number;
   totalExpense: number;
   netProfit: number;
 }
@@ -18,11 +20,11 @@ interface ClinicReportExportData {
 export function exportReportToPDF(data: ClinicReportExportData) {
   const doc = new jsPDF();
 
-  // Primary Header / Branding
-  doc.setFillColor(26, 34, 52); // Deep Charcoal #1A2234
+  // Primary Header / Luxury Charcoal Banner
+  doc.setFillColor(26, 34, 52);
   doc.rect(0, 0, 210, 36, "F");
 
-  doc.setTextColor(230, 200, 160); // Rose Gold / Champagne tone
+  doc.setTextColor(230, 200, 160); // Champagne Rose
   doc.setFontSize(18);
   doc.setFont("helvetica", "bold");
   doc.text(data.clinicName.toUpperCase(), 14, 18);
@@ -30,8 +32,8 @@ export function exportReportToPDF(data: ClinicReportExportData) {
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(200, 210, 225);
-  doc.text("EXECUTIVE FINANCIAL & OPERATIONS PERFORMANCE REPORT", 14, 26);
-  doc.text(`Generated: ${new Date().toLocaleString()}`, 140, 26);
+  doc.text("EXECUTIVE FINANCIAL, SALES & PROFIT MARGIN AUDIT REPORT", 14, 26);
+  doc.text(`Generated: ${new Date().toLocaleString()}`, 130, 26);
 
   // Filter Subheader
   doc.setTextColor(50, 50, 50);
@@ -43,16 +45,21 @@ export function exportReportToPDF(data: ClinicReportExportData) {
     46
   );
   if (data.procedureFilter && data.procedureFilter !== "ALL") {
-    doc.text(`Filtered Procedure: ${data.procedureFilter}`, 14, 52);
+    doc.text(`Filtered Procedure/Item: ${data.procedureFilter}`, 14, 52);
   }
 
-  // Summary Metrics Table
+  const effectiveCost = data.totalCost ?? data.sales.reduce((sum, s) => sum + (s.totalCost || 0), 0);
+  const effectiveGrossProfit = data.grossProfit ?? (data.totalIncome - effectiveCost);
+
+  // Summary Metrics Table (Showing Revenue, Buy Price/COGS, Gross Profit, OpEx, Net Profit)
   autoTable(doc, {
     startY: data.procedureFilter && data.procedureFilter !== "ALL" ? 58 : 52,
-    head: [["Total Revenue / Income", "Total Clinic Expenses", "Net Operating Profit"]],
+    head: [["Total Revenue (Sale)", "Cost of Goods (Buy)", "Gross Profit (Gain)", "Total OpEx", "Net Clinical Profit"]],
     body: [
       [
         formatCurrency(data.totalIncome),
+        formatCurrency(effectiveCost),
+        formatCurrency(effectiveGrossProfit),
         formatCurrency(data.totalExpense),
         formatCurrency(data.netProfit),
       ],
@@ -63,9 +70,10 @@ export function exportReportToPDF(data: ClinicReportExportData) {
       textColor: [255, 255, 255],
       fontStyle: "bold",
       halign: "center",
+      fontSize: 8.5,
     },
     bodyStyles: {
-      fontSize: 12,
+      fontSize: 10,
       fontStyle: "bold",
       halign: "center",
       textColor: [30, 30, 30],
@@ -77,32 +85,40 @@ export function exportReportToPDF(data: ClinicReportExportData) {
   doc.setFontSize(12);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(26, 34, 52);
-  doc.text("Income / Procedure Sales Breakdown", 14, lastY);
+  doc.text("Itemized Sales, Cost & Profit Ledger", 14, lastY);
 
-  const salesRows = data.sales.map((sale) => [
-    sale.saleDate,
-    sale.invoiceNumber,
-    sale.customerName,
-    sale.procedureName,
-    sale.paymentMethod.replace("_", " ").toUpperCase(),
-    formatCurrency(sale.netAmount),
-  ]);
+  const salesRows = data.sales.map((sale) => {
+    const costVal = sale.totalCost || 0;
+    const profitVal = sale.profit !== undefined ? sale.profit : sale.netAmount - costVal;
+    return [
+      sale.saleDate,
+      sale.invoiceNumber,
+      sale.customerName,
+      sale.procedureName,
+      sale.paymentMethod.replace("_", " ").toUpperCase(),
+      formatCurrency(costVal),
+      formatCurrency(sale.netAmount),
+      `+${formatCurrency(profitVal)}`,
+    ];
+  });
 
   autoTable(doc, {
     startY: lastY + 4,
-    head: [["Date", "Invoice #", "Customer", "Procedure", "Method", "Amount"]],
-    body: salesRows.length > 0 ? salesRows : [["—", "—", "No sales records for selected period", "—", "—", "Rs. 0.00"]],
+    head: [["Date", "Invoice #", "Customer", "Item / Procedure", "Method", "Buy (Cost)", "Sale (Price)", "Profit"]],
+    body: salesRows.length > 0 ? salesRows : [["—", "—", "No sales records for selected period", "—", "—", "Rs. 0", "Rs. 0", "Rs. 0"]],
     theme: "striped",
     headStyles: {
       fillColor: [38, 53, 77],
       textColor: [255, 255, 255],
-      fontSize: 9,
+      fontSize: 8,
     },
     bodyStyles: {
-      fontSize: 8.5,
+      fontSize: 7.5,
     },
     columnStyles: {
-      5: { halign: "right", fontStyle: "bold" },
+      5: { halign: "right", textColor: [180, 120, 20] },
+      6: { halign: "right", fontStyle: "bold", textColor: [20, 20, 20] },
+      7: { halign: "right", fontStyle: "bold", textColor: [16, 140, 90] },
     },
   });
 
@@ -116,7 +132,7 @@ export function exportReportToPDF(data: ClinicReportExportData) {
   doc.setFontSize(12);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(26, 34, 52);
-  doc.text("Clinic Expenses Breakdown", 14, currentExpenseY);
+  doc.text("Clinic Operating Expenses Breakdown", 14, currentExpenseY);
 
   const expenseRows = data.expenses.map((exp) => [
     exp.expenseDate,
@@ -134,13 +150,13 @@ export function exportReportToPDF(data: ClinicReportExportData) {
     headStyles: {
       fillColor: [122, 84, 71],
       textColor: [255, 255, 255],
-      fontSize: 9,
-    },
-    bodyStyles: {
       fontSize: 8.5,
     },
+    bodyStyles: {
+      fontSize: 8,
+    },
     columnStyles: {
-      4: { halign: "right", fontStyle: "bold" },
+      4: { halign: "right", fontStyle: "bold", textColor: [200, 40, 40] },
     },
   });
 
@@ -157,7 +173,7 @@ export function exportReportToPDF(data: ClinicReportExportData) {
     );
   }
 
-  doc.save(`Shezi_Clinic_Report_${data.startDate}_to_${data.endDate}.pdf`);
+  doc.save(`Shezi_Clinic_Financial_Report_${data.startDate}_to_${data.endDate}.pdf`);
 }
 
 export function exportPayslipToPDF(salary: SalaryRecord, clinicName: string) {

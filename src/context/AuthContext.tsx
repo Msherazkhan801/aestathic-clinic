@@ -35,7 +35,7 @@ export const DEMO_PERSONAS: Record<UserRole, DemoUserPersona> = {
     email: "salar@gmail.com",
     name: "Alexander Wright",
     title: "Clinic Manager & Finance Lead",
-    employeeId: "emp-005",
+    employeeId: "emp-002",
     avatar: "",
   },
   user: {
@@ -43,7 +43,7 @@ export const DEMO_PERSONAS: Record<UserRole, DemoUserPersona> = {
     email: "user@gmail.com",
     name: "Isabella Rossi",
     title: "Patient Concierge & Front Desk",
-    employeeId: "emp-006",
+    employeeId: "emp-003",
     avatar: "",
   },
 };
@@ -207,7 +207,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             email: "salar@gmail.com",
             displayName: persona.name,
             role: "manager",
-            employeeId: "emp-005",
+            employeeId: "emp-002",
             photoURL: persona.avatar,
           };
           setUser(u);
@@ -239,7 +239,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             email: "user@gmail.com",
             displayName: persona.name,
             role: "user",
-            employeeId: "emp-006",
+            employeeId: "emp-003",
             photoURL: persona.avatar,
           };
           setUser(u);

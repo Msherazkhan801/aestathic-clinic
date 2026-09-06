@@ -19,6 +19,8 @@ import {
   Clock,
   Receipt,
   FileBarChart,
+  ShoppingCart,
+  Sparkle,
 } from "lucide-react";
 
 export default function ManagerOverviewPage() {
@@ -28,11 +30,16 @@ export default function ManagerOverviewPage() {
     () => sales.reduce((sum, s) => sum + s.netAmount, 0),
     [sales]
   );
+  const totalCost = useMemo(
+    () => sales.reduce((sum, s) => sum + (s.totalCost || 0), 0),
+    [sales]
+  );
+  const grossProfit = totalIncome - totalCost;
   const totalExpense = useMemo(
     () => expenses.reduce((sum, e) => sum + e.amount, 0),
     [expenses]
   );
-  const netProfit = totalIncome - totalExpense;
+  const netProfit = grossProfit - totalExpense;
 
   const todayStr = new Date().toISOString().split("T")[0];
   const todayAttendance = useMemo(
@@ -71,17 +78,24 @@ export default function ManagerOverviewPage() {
               Welcome, Alexander Wright
             </h2>
             <p className="text-xs sm:text-sm text-slate-300 font-light mt-1">
-              Mark daily attendance, calculate absence-adjusted staff salaries, and record clinic finances.
+              Mark daily attendance, calculate absence-adjusted staff salaries, sell procedures and products, and manage clinic finances.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
             <Link
+              href="/manager/sales"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-clinic-600 hover:from-emerald-500 hover:to-clinic-500 text-white text-xs font-bold shadow-glow transition-all"
+            >
+              <ShoppingCart className="w-4 h-4" />
+              <span>Open Sales POS</span>
+            </Link>
+            <Link
               href="/manager/attendance"
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-gold-600 hover:from-amber-500 hover:to-gold-500 text-white text-xs font-bold shadow-lg transition-all"
             >
               <CalendarCheck className="w-4 h-4" />
-              <span>Mark Today&apos;s Attendance</span>
+              <span>Mark Attendance</span>
             </Link>
             <Link
               href="/manager/finance"
@@ -112,20 +126,20 @@ export default function ManagerOverviewPage() {
           variant="emerald"
         />
         <StatCard
-          title="Recorded Expenses"
-          value={formatCurrency(totalExpense)}
-          change={-4.1}
-          changeLabel="operating expenses"
+          title="Cost of Goods (Buy)"
+          value={formatCurrency(totalCost)}
+          change={-2.1}
+          changeLabel="inventory COGS"
           icon={CreditCard}
-          variant="rose"
+          variant="slate"
         />
         <StatCard
-          title="Net Cashflow"
-          value={formatCurrency(netProfit)}
+          title="Gross Sales Profit"
+          value={formatCurrency(grossProfit)}
           change={16.2}
-          changeLabel="operating margin"
+          changeLabel="sales gross margin"
           icon={TrendingUp}
-          variant="slate"
+          variant="rose"
         />
       </div>
 
@@ -139,64 +153,84 @@ export default function ManagerOverviewPage() {
       </div>
 
       {/* Quick Action Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Attendance Card */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 sm:gap-6">
+        {/* POS Sales Card */}
         <Link
-          href="/manager/attendance"
-          className="group p-6 rounded-3xl bg-dark-card/90 border border-slate-700/80 hover:border-amber-500/50 backdrop-blur-xl transition-all shadow-glass-dark hover:-translate-y-1 space-y-3"
+          href="/manager/sales"
+          className="group p-5 rounded-3xl bg-dark-card/90 border border-slate-700/80 hover:border-emerald-500/50 backdrop-blur-xl transition-all shadow-glass-dark hover:-translate-y-1 space-y-2.5"
+        >
+          <div className="p-3 rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 w-fit">
+            <ShoppingCart className="w-5 h-5" />
+          </div>
+          <h3 className="text-base font-bold text-white font-display group-hover:text-emerald-300 transition-colors">
+            POS Sales Counter
+          </h3>
+          <p className="text-xs text-slate-400 font-light line-clamp-2">
+            Sell aesthetic procedures and dispense pharmacy items with stock deduction and receipt printing.
+          </p>
+          <div className="flex items-center gap-1 text-xs font-semibold text-emerald-400 pt-1">
+            <span>Open POS</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </div>
+        </Link>
+
+        {/* Treatments Catalog Card */}
+        <Link
+          href="/manager/treatments"
+          className="group p-5 rounded-3xl bg-dark-card/90 border border-slate-700/80 hover:border-amber-500/50 backdrop-blur-xl transition-all shadow-glass-dark hover:-translate-y-1 space-y-2.5"
         >
           <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/20 w-fit">
-            <CalendarCheck className="w-6 h-6" />
+            <Sparkle className="w-5 h-5" />
           </div>
-          <h3 className="text-lg font-bold text-white font-display group-hover:text-amber-300 transition-colors">
-            Staff Daily Attendance
+          <h3 className="text-base font-bold text-white font-display group-hover:text-amber-300 transition-colors">
+            Treatments & Procedures
           </h3>
-          <p className="text-xs text-slate-400 font-light">
-            Record check-in/out timestamps and unexcused absences for accurate payroll linkage.
+          <p className="text-xs text-slate-400 font-light line-clamp-2">
+            Add clinical aesthetic procedures, service pricing, and consumables costs.
           </p>
-          <div className="flex items-center gap-1 text-xs font-semibold text-amber-400 pt-2">
-            <span>Mark Attendance</span>
-            <ArrowRight className="w-4 h-4" />
+          <div className="flex items-center gap-1 text-xs font-semibold text-amber-400 pt-1">
+            <span>Manage Catalog</span>
+            <ArrowRight className="w-3.5 h-3.5" />
           </div>
         </Link>
 
         {/* Salaries Card */}
         <Link
           href="/manager/salaries"
-          className="group p-6 rounded-3xl bg-dark-card/90 border border-slate-700/80 hover:border-emerald-500/50 backdrop-blur-xl transition-all shadow-glass-dark hover:-translate-y-1 space-y-3"
+          className="group p-5 rounded-3xl bg-dark-card/90 border border-slate-700/80 hover:border-clinic-500/50 backdrop-blur-xl transition-all shadow-glass-dark hover:-translate-y-1 space-y-2.5"
         >
-          <div className="p-3 rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 w-fit">
-            <CreditCard className="w-6 h-6" />
+          <div className="p-3 rounded-2xl bg-clinic-500/10 text-clinic-400 border border-clinic-500/20 w-fit">
+            <CreditCard className="w-5 h-5" />
           </div>
-          <h3 className="text-lg font-bold text-white font-display group-hover:text-emerald-300 transition-colors">
-            Automated Salary Engine
+          <h3 className="text-base font-bold text-white font-display group-hover:text-clinic-300 transition-colors">
+            Salary Engine
           </h3>
-          <p className="text-xs text-slate-400 font-light">
-            Compute payroll with automatic daily wage deductions for absences and generate payslips.
+          <p className="text-xs text-slate-400 font-light line-clamp-2">
+            Compute payroll with automatic daily wage deductions for absences.
           </p>
-          <div className="flex items-center gap-1 text-xs font-semibold text-emerald-400 pt-2">
+          <div className="flex items-center gap-1 text-xs font-semibold text-clinic-400 pt-1">
             <span>Calculate Payroll</span>
-            <ArrowRight className="w-4 h-4" />
+            <ArrowRight className="w-3.5 h-3.5" />
           </div>
         </Link>
 
         {/* Reports Card */}
         <Link
           href="/manager/reports"
-          className="group p-6 rounded-3xl bg-dark-card/90 border border-slate-700/80 hover:border-clinic-500/50 backdrop-blur-xl transition-all shadow-glass-dark hover:-translate-y-1 space-y-3"
+          className="group p-5 rounded-3xl bg-dark-card/90 border border-slate-700/80 hover:border-gold-500/50 backdrop-blur-xl transition-all shadow-glass-dark hover:-translate-y-1 space-y-2.5"
         >
-          <div className="p-3 rounded-2xl bg-clinic-500/10 text-clinic-400 border border-clinic-500/20 w-fit">
-            <FileBarChart className="w-6 h-6" />
+          <div className="p-3 rounded-2xl bg-gold-500/10 text-gold-400 border border-gold-500/20 w-fit">
+            <FileBarChart className="w-5 h-5" />
           </div>
-          <h3 className="text-lg font-bold text-white font-display group-hover:text-clinic-300 transition-colors">
-            Filtered Financial Reports
+          <h3 className="text-base font-bold text-white font-display group-hover:text-gold-300 transition-colors">
+            Financial Reports
           </h3>
-          <p className="text-xs text-slate-400 font-light">
-            Generate custom date range reports by procedure and download audit-ready PDFs or CSVs.
+          <p className="text-xs text-slate-400 font-light line-clamp-2">
+            Generate custom date range reports with cost & profit audit exports.
           </p>
-          <div className="flex items-center gap-1 text-xs font-semibold text-clinic-400 pt-2">
+          <div className="flex items-center gap-1 text-xs font-semibold text-gold-400 pt-1">
             <span>View Reports</span>
-            <ArrowRight className="w-4 h-4" />
+            <ArrowRight className="w-3.5 h-3.5" />
           </div>
         </Link>
       </div>

@@ -1,26 +1,46 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import { useData } from "@/context/DataContext";
+import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
-import { PharmacyItem } from "@/types";
+import { PharmacyItem, Sale, PaymentMethod } from "@/types";
 import { DataTable, Column } from "@/components/ui/DataTable";
 import { Modal } from "@/components/ui/Modal";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { InvoicePreview } from "@/components/ui/InvoicePreview";
+import { formatCurrency, formatDate, generateInvoiceNumber } from "@/lib/utils";
 import {
   Pill,
   Plus,
   AlertTriangle,
   MinusCircle,
   PlusCircle,
-  Package,
+  ShoppingCart,
+  Receipt,
+  CheckCircle2,
+  Sparkles,
 } from "lucide-react";
 
+const PAYMENT_METHODS: PaymentMethod[] = [
+  "cash",
+  "credit_card",
+  "debit_card",
+  "bank_transfer",
+  "digital_wallet",
+  "insurance",
+];
+
 export default function UserPharmacyPage() {
-  const { pharmacy, addPharmacyItem, updatePharmacyItem } = useData();
+  const { user } = useAuth();
+  const { pharmacy, contacts, settings, addPharmacyItem, updatePharmacyItem, addSale } = useData();
   const { showToast } = useToast();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [sellingItem, setSellingItem] = useState<PharmacyItem | null>(null);
+  const [activeReceiptSale, setActiveReceiptSale] = useState<Sale | null>(null);
+
+  // New Product Form
   const [form, setForm] = useState({
     name: "",
     category: "Skincare & Cosmeceuticals" as any,
@@ -32,6 +52,16 @@ export default function UserPharmacyPage() {
     expiryDate: "2027-08-30",
     supplier: "Dermaceutic Lab",
     batchNumber: "LOT-3011",
+  });
+
+  // Quick Sell Form
+  const [sellForm, setSellForm] = useState({
+    customerName: "",
+    customerPhone: "",
+    quantity: 1,
+    discount: 0,
+    paymentMethod: "credit_card" as PaymentMethod,
+    notes: "",
   });
 
   const handleDispense = (item: PharmacyItem, delta: number) => {
@@ -50,6 +80,88 @@ export default function UserPharmacyPage() {
         "success"
       );
     }
+  };
+
+  const handleOpenSell = (item: PharmacyItem) => {
+    if (item.quantity <= 0) {
+      showToast("Out of Stock", `${item.name} is currently out of stock.`, "error");
+      return;
+    }
+    setSellingItem(item);
+    setSellForm({
+      customerName: "",
+      customerPhone: "",
+      quantity: 1,
+      discount: 0,
+      paymentMethod: "credit_card",
+      notes: "",
+    });
+  };
+
+  const handleSellSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!sellingItem) return;
+
+    if (!sellForm.customerName.trim()) {
+      showToast("Missing Name", "Please enter the patient name.", "warning");
+      return;
+    }
+
+    if (sellForm.quantity > sellingItem.quantity) {
+      showToast(
+        "Insufficient Stock",
+        `Only ${sellingItem.quantity} ${sellingItem.unit} available in stock.`,
+        "error"
+      );
+      return;
+    }
+
+    const grossAmount = sellingItem.sellingPrice * sellForm.quantity;
+    const totalCost = sellingItem.costPrice * sellForm.quantity;
+    const netAmount = Math.max(0, grossAmount - sellForm.discount);
+    const profit = netAmount - totalCost;
+
+    const newSale = addSale({
+      invoiceNumber: generateInvoiceNumber(),
+      customerName: sellForm.customerName.trim(),
+      customerPhone: sellForm.customerPhone || "+1 (555) 000-0000",
+      saleType: "medicine",
+      procedureId: sellingItem.itemId,
+      procedureName: `${sellingItem.name} (${sellForm.quantity} ${sellingItem.unit})`,
+      items: [
+        {
+          id: sellingItem.itemId,
+          name: sellingItem.name,
+          type: "medicine",
+          quantity: sellForm.quantity,
+          unitPrice: sellingItem.sellingPrice,
+          costPrice: sellingItem.costPrice,
+          totalAmount: grossAmount,
+          totalCost: totalCost,
+          profit: profit,
+          unit: sellingItem.unit,
+          batchNumber: sellingItem.batchNumber,
+        },
+      ],
+      amount: grossAmount,
+      discount: sellForm.discount,
+      netAmount: netAmount,
+      totalCost: totalCost,
+      profit: profit,
+      paymentMethod: sellForm.paymentMethod,
+      saleDate: new Date().toISOString().split("T")[0],
+      recordedBy: user?.displayName || "Isabella Rossi (Reception)",
+      notes: sellForm.notes,
+    });
+
+    showToast(
+      "Medicine Sold & Deducted",
+      `Sold ${sellForm.quantity} ${sellingItem.unit} of ${sellingItem.name}. Stock updated!`,
+      "success"
+    );
+
+    setSellingItem(null);
+    setActiveReceiptSale(newSale);
   };
 
   const handleAddSubmit = (e: React.FormEvent) => {
@@ -129,21 +241,32 @@ export default function UserPharmacyPage() {
       cell: (item) => formatDate(item.expiryDate),
     },
     {
-      header: "Dispense / Restock",
+      header: "Sell / Dispense Actions",
       cell: (item) => (
         <div className="flex items-center gap-2">
           <button
+            onClick={() => handleOpenSell(item)}
+            disabled={item.quantity <= 0}
+            className={`px-3 py-1.5 rounded-xl font-bold text-xs shadow-md transition-all flex items-center gap-1.5 ${
+              item.quantity <= 0
+                ? "bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700"
+                : "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-glow"
+            }`}
+          >
+            <ShoppingCart className="w-3.5 h-3.5" />
+            <span>Sell Product</span>
+          </button>
+          <button
             onClick={() => handleDispense(item, -1)}
-            title="Dispense 1 unit to patient"
-            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold transition-colors flex items-center gap-1"
+            title="Fast -1 Dispense without invoice"
+            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
           >
             <MinusCircle className="w-3.5 h-3.5 text-rose-400" />
-            <span>Dispense</span>
           </button>
           <button
             onClick={() => handleDispense(item, 1)}
-            title="Add 1 unit"
-            className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700"
+            title="Fast +1 Restock"
+            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
           >
             <PlusCircle className="w-3.5 h-3.5 text-emerald-400" />
           </button>
@@ -165,17 +288,26 @@ export default function UserPharmacyPage() {
             Cosmeceuticals & Pharmacy Stock
           </h2>
           <p className="text-xs sm:text-sm text-slate-400 font-light mt-0.5">
-            Dispense post-treatment recovery balms, serums, and sunscreen to patients upon checkout.
+            Dispense post-treatment recovery balms, serums, and sunscreen to patients upon checkout with automated stock deduction.
           </p>
         </div>
 
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs uppercase tracking-wider shadow-lg transition-all"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Add New Product</span>
-        </button>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/user/sales"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold text-xs uppercase tracking-wider transition-all"
+          >
+            <ShoppingCart className="w-4 h-4 text-emerald-400" />
+            <span>Open Full POS Terminal</span>
+          </Link>
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs uppercase tracking-wider shadow-lg transition-all"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add New Product</span>
+          </button>
+        </div>
       </div>
 
       <DataTable
@@ -185,6 +317,151 @@ export default function UserPharmacyPage() {
         searchKey="name"
       />
 
+      {/* Quick Sell Modal */}
+      <Modal
+        isOpen={Boolean(sellingItem)}
+        onClose={() => setSellingItem(null)}
+        title={`Sell & Dispense: ${sellingItem?.name}`}
+        subtitle={`Available Stock: ${sellingItem?.quantity} ${sellingItem?.unit} • Price: ${formatCurrency(sellingItem?.sellingPrice || 0)}`}
+        maxWidth="xl"
+      >
+        {sellingItem && (
+          <form onSubmit={handleSellSubmit} className="space-y-4 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-slate-300 font-medium mb-1">
+                  Patient Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={sellForm.customerName}
+                  onChange={(e) => setSellForm({ ...sellForm, customerName: e.target.value })}
+                  placeholder="e.g. Victoria Sterling"
+                  className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:border-emerald-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-medium mb-1">
+                  Phone Number
+                </label>
+                <input
+                  type="text"
+                  value={sellForm.customerPhone}
+                  onChange={(e) => setSellForm({ ...sellForm, customerPhone: e.target.value })}
+                  placeholder="+1 (555) 000-0000"
+                  className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:border-emerald-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-medium mb-1">
+                  Quantity to Sell ({sellingItem.unit})
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={sellingItem.quantity}
+                  required
+                  value={sellForm.quantity}
+                  onChange={(e) =>
+                    setSellForm({
+                      ...sellForm,
+                      quantity: Math.max(1, parseInt(e.target.value, 10) || 1),
+                    })
+                  }
+                  className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:border-emerald-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-medium mb-1">
+                  Discount (Rs.)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={sellForm.discount}
+                  onChange={(e) =>
+                    setSellForm({
+                      ...sellForm,
+                      discount: parseFloat(e.target.value) || 0,
+                    })
+                  }
+                  className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:border-emerald-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block text-slate-300 font-medium mb-1">
+                  Payment Method
+                </label>
+                <select
+                  value={sellForm.paymentMethod}
+                  onChange={(e) =>
+                    setSellForm({
+                      ...sellForm,
+                      paymentMethod: e.target.value as PaymentMethod,
+                    })
+                  }
+                  className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:border-emerald-500 focus:outline-none capitalize"
+                >
+                  {PAYMENT_METHODS.map((m) => (
+                    <option key={m} value={m}>
+                      {m.replace("_", " ")}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-slate-300 font-medium mb-1">
+                Dispense Notes
+              </label>
+              <input
+                type="text"
+                value={sellForm.notes}
+                onChange={(e) => setSellForm({ ...sellForm, notes: e.target.value })}
+                placeholder="e.g. Post-facial recovery serum dispense"
+                className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:border-emerald-500 focus:outline-none"
+              />
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500/30 flex items-center justify-between font-mono">
+              <span className="text-emerald-300 text-xs">Total Bill Amount:</span>
+              <span className="text-base font-bold text-white">
+                {formatCurrency(
+                  Math.max(
+                    0,
+                    sellingItem.sellingPrice * sellForm.quantity - sellForm.discount
+                  )
+                )}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setSellingItem(null)}
+                className="px-4 py-2.5 rounded-xl border border-slate-700 text-slate-300 hover:bg-slate-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold shadow-lg transition-all flex items-center gap-1.5"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Complete Sale & Print Receipt</span>
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      {/* Add Product Modal */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
@@ -254,6 +531,22 @@ export default function UserPharmacyPage() {
 
             <div>
               <label className="block text-slate-300 font-medium mb-1">
+                Cost Price (Buy Price) (Rs.)
+              </label>
+              <input
+                type="number"
+                min={0}
+                required
+                value={form.costPrice}
+                onChange={(e) =>
+                  setForm({ ...form, costPrice: parseFloat(e.target.value) || 0 })
+                }
+                className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:border-emerald-500 focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-slate-300 font-medium mb-1">
                 Selling Price (Rs.)
               </label>
               <input
@@ -279,6 +572,18 @@ export default function UserPharmacyPage() {
                 className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:border-emerald-500 focus:outline-none"
               />
             </div>
+
+            <div>
+              <label className="block text-slate-300 font-medium mb-1">
+                LOT / Batch Number
+              </label>
+              <input
+                type="text"
+                value={form.batchNumber}
+                onChange={(e) => setForm({ ...form, batchNumber: e.target.value })}
+                className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:border-emerald-500 focus:outline-none"
+              />
+            </div>
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
@@ -298,6 +603,14 @@ export default function UserPharmacyPage() {
           </div>
         </form>
       </Modal>
+
+      {/* Invoice Modal */}
+      <InvoicePreview
+        isOpen={Boolean(activeReceiptSale)}
+        onClose={() => setActiveReceiptSale(null)}
+        sale={activeReceiptSale}
+        settings={settings}
+      />
     </div>
   );
 }

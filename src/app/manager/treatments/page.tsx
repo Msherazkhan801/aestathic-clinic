@@ -14,10 +14,7 @@ import {
   Edit2,
   Trash2,
   Clock,
-  DollarSign,
-  Tag,
-  Layers,
-  Percent,
+  Briefcase,
 } from "lucide-react";
 
 const CATEGORIES: TreatmentCategory[] = [
@@ -29,7 +26,7 @@ const CATEGORIES: TreatmentCategory[] = [
   "Body Contouring & Wellness",
 ];
 
-export default function AdminTreatmentsPage() {
+export default function ManagerTreatmentsPage() {
   const { treatments, addTreatment, updateTreatment, deleteTreatment } = useData();
   const { showToast } = useToast();
 
@@ -118,7 +115,7 @@ export default function AdminTreatmentsPage() {
       accessorKey: "category",
       sortable: true,
       cell: (trt) => (
-        <span className="px-2.5 py-0.5 rounded-full bg-clinic-500/10 border border-clinic-500/30 text-clinic-300 text-[11px] font-medium">
+        <span className="px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] font-medium">
           {trt.category}
         </span>
       ),
@@ -129,7 +126,7 @@ export default function AdminTreatmentsPage() {
       sortable: true,
       cell: (trt) => (
         <div className="flex items-center gap-1 text-xs text-slate-300">
-          <Clock className="w-3.5 h-3.5 text-clinic-400" />
+          <Clock className="w-3.5 h-3.5 text-amber-400" />
           <span>{trt.duration} mins</span>
         </div>
       ),
@@ -203,24 +200,24 @@ export default function AdminTreatmentsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 text-clinic-400 text-xs font-bold uppercase tracking-widest mb-1">
-            <Sparkle className="w-4 h-4" />
-            <span>Clinical Procedures & Offerings</span>
+          <div className="flex items-center gap-2 text-amber-400 text-xs font-bold uppercase tracking-widest mb-1">
+            <Briefcase className="w-4 h-4" />
+            <span>Manager Treatment Menu & Procedures</span>
           </div>
           <h2 className="text-2xl sm:text-3xl font-extrabold text-white font-display">
             Treatments & Procedures Catalog
           </h2>
           <p className="text-xs sm:text-sm text-slate-400 font-light mt-0.5">
-            Add, configure and price aesthetic treatments with consumable buy costs and profit margins.
+            Add and manage clinical aesthetic procedures, service pricing, and consumables costs.
           </p>
         </div>
 
         <button
           onClick={handleOpenAdd}
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-clinic-500 to-gold-500 hover:from-clinic-600 hover:to-gold-600 text-white font-bold text-xs uppercase tracking-wider shadow-glow transition-all"
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-gold-600 hover:from-amber-500 hover:to-gold-500 text-white font-bold text-xs uppercase tracking-wider shadow-lg transition-all"
         >
           <Plus className="w-4 h-4" />
-          <span>Add New Treatment</span>
+          <span>Add New Procedure</span>
         </button>
       </div>
 
@@ -236,7 +233,7 @@ export default function AdminTreatmentsPage() {
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title={editingTrt ? "Edit Clinical Procedure" : "Add New Clinical Treatment"}
+        title={editingTrt ? "Edit Clinical Procedure" : "Add New Clinical Procedure"}
         subtitle="Configure procedure name, consumables cost, selling price, and session length"
         maxWidth="2xl"
       >
@@ -251,8 +248,8 @@ export default function AdminTreatmentsPage() {
                 required
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g. Fractional CO2 Laser Resurfacing"
-                className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:border-clinic-500 focus:outline-none"
+                placeholder="e.g. Microneedling with PRP Boost"
+                className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:border-amber-500 focus:outline-none"
               />
             </div>
 
@@ -266,7 +263,7 @@ export default function AdminTreatmentsPage() {
                     category: e.target.value as TreatmentCategory,
                   })
                 }
-                className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:border-clinic-500 focus:outline-none"
+                className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:border-amber-500 focus:outline-none"
               >
                 {CATEGORIES.map((c) => (
                   <option key={c} value={c}>
@@ -291,13 +288,13 @@ export default function AdminTreatmentsPage() {
                     duration: parseInt(e.target.value, 10) || 30,
                   })
                 }
-                className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:border-clinic-500 focus:outline-none"
+                className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:border-amber-500 focus:outline-none"
               />
             </div>
 
             <div>
               <label className="block text-amber-400 font-medium mb-1">
-                Consumables / Buy Cost Price (Rs.)
+                Consumables / Buy Cost (Rs.)
               </label>
               <input
                 type="number"
@@ -336,15 +333,15 @@ export default function AdminTreatmentsPage() {
             <div className="sm:col-span-2 flex items-center gap-2 pt-2">
               <input
                 type="checkbox"
-                id="isTrtActive"
+                id="isMgrTrtActive"
                 checked={formData.isActive}
                 onChange={(e) =>
                   setFormData({ ...formData, isActive: e.target.checked })
                 }
-                className="rounded bg-slate-900 border-slate-700 text-clinic-500 focus:ring-clinic-500"
+                className="rounded bg-slate-900 border-slate-700 text-amber-500 focus:ring-amber-500"
               />
-              <label htmlFor="isTrtActive" className="text-slate-300 font-medium">
-                Active & bookable in clinical schedule & POS terminal
+              <label htmlFor="isMgrTrtActive" className="text-slate-300 font-medium">
+                Active & bookable in schedule & POS terminal
               </label>
             </div>
           </div>
@@ -360,7 +357,7 @@ export default function AdminTreatmentsPage() {
                 setFormData({ ...formData, description: e.target.value })
               }
               placeholder="e.g. Deep vortex cleansing with custom booster infusion and red LED therapy."
-              className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:border-clinic-500 focus:outline-none custom-scrollbar"
+              className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:border-amber-500 focus:outline-none custom-scrollbar"
             />
           </div>
 
@@ -392,7 +389,7 @@ export default function AdminTreatmentsPage() {
             </button>
             <button
               type="submit"
-              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-clinic-500 to-gold-500 hover:from-clinic-600 hover:to-gold-600 text-white font-bold shadow-glow transition-all"
+              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-gold-600 hover:from-amber-500 hover:to-gold-500 text-white font-bold shadow-lg transition-all"
             >
               {editingTrt ? "Update Treatment" : "Save Treatment"}
             </button>

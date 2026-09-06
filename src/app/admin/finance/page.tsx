@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from "react";
 import { useData } from "@/context/DataContext";
+import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { Sale, Expense, PaymentMethod, ExpenseCategory } from "@/types";
 import { DataTable, Column } from "@/components/ui/DataTable";
@@ -43,10 +44,12 @@ const EXPENSE_CATEGORIES: ExpenseCategory[] = [
 ];
 
 export default function AdminFinancePage() {
+  const { user } = useAuth();
   const {
     sales,
     expenses,
     treatments,
+    pharmacy,
     contacts,
     settings,
     addSale,
@@ -88,11 +91,21 @@ export default function AdminFinancePage() {
     () => sales.reduce((sum, s) => sum + s.netAmount, 0),
     [sales]
   );
+  const totalCost = useMemo(
+    () => sales.reduce((sum, s) => sum + (s.totalCost || 0), 0),
+    [sales]
+  );
+  const grossProfit = totalIncome - totalCost;
   const totalExpense = useMemo(
     () => expenses.reduce((sum, e) => sum + e.amount, 0),
     [expenses]
   );
   const netMargin = totalIncome - totalExpense;
+
+  // New Sale Form State (supports procedure and medicine)
+  const [saleItemType, setSaleItemType] = useState<"procedure" | "medicine">("procedure");
+  const [selectedMedId, setSelectedMedId] = useState<string>(pharmacy[0]?.itemId || "");
+  const [saleQuantity, setSaleQuantity] = useState<number>(1);
 
   // Procedure change in sale form
   const handleProcedureSelect = (trtId: string) => {
@@ -107,6 +120,19 @@ export default function AdminFinancePage() {
     }
   };
 
+  const handleMedicineSelect = (medId: string) => {
+    setSelectedMedId(medId);
+    const med = pharmacy.find((p) => p.itemId === medId);
+    if (med) {
+      setSaleForm({
+        ...saleForm,
+        procedureId: med.itemId,
+        procedureName: `${med.name} (${saleQuantity} ${med.unit})`,
+        amount: med.sellingPrice * saleQuantity,
+      });
+    }
+  };
+
   const handleSaleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!saleForm.customerName.trim()) {
@@ -114,17 +140,85 @@ export default function AdminFinancePage() {
       return;
     }
 
-    const netAmount = Math.max(0, saleForm.amount - saleForm.discount);
-    addSale({
-      ...saleForm,
-      invoiceNumber: generateInvoiceNumber(),
-      netAmount,
-      recordedBy: "Dr. Elena Vance",
-    });
+    if (saleItemType === "procedure") {
+      const trt = treatments.find((t) => t.treatmentId === saleForm.procedureId);
+      const costPrice = (trt?.costPrice || 0) * saleQuantity;
+      const grossAmount = saleForm.amount;
+      const netAmount = Math.max(0, grossAmount - saleForm.discount);
+      const profit = netAmount - costPrice;
+
+      addSale({
+        ...saleForm,
+        invoiceNumber: generateInvoiceNumber(),
+        saleType: "procedure",
+        items: [
+          {
+            id: saleForm.procedureId,
+            name: saleForm.procedureName,
+            type: "procedure",
+            quantity: saleQuantity,
+            unitPrice: trt?.price || grossAmount,
+            costPrice: trt?.costPrice || 0,
+            totalAmount: grossAmount,
+            totalCost: costPrice,
+            profit: profit,
+            unit: "session",
+          },
+        ],
+        amount: grossAmount,
+        netAmount,
+        totalCost: costPrice,
+        profit: profit,
+        recordedBy: user?.displayName || "Sheraz khan (Admin)",
+      });
+    } else {
+      const med = pharmacy.find((p) => p.itemId === selectedMedId);
+      if (!med) return;
+      if (saleQuantity > med.quantity) {
+        showToast(
+          "Insufficient Stock",
+          `Only ${med.quantity} ${med.unit} available in inventory.`,
+          "error"
+        );
+        return;
+      }
+      const grossAmount = med.sellingPrice * saleQuantity;
+      const costPrice = med.costPrice * saleQuantity;
+      const netAmount = Math.max(0, grossAmount - saleForm.discount);
+      const profit = netAmount - costPrice;
+
+      addSale({
+        ...saleForm,
+        invoiceNumber: generateInvoiceNumber(),
+        saleType: "medicine",
+        procedureId: med.itemId,
+        procedureName: `${med.name} (${saleQuantity} ${med.unit})`,
+        items: [
+          {
+            id: med.itemId,
+            name: med.name,
+            type: "medicine",
+            quantity: saleQuantity,
+            unitPrice: med.sellingPrice,
+            costPrice: med.costPrice,
+            totalAmount: grossAmount,
+            totalCost: costPrice,
+            profit: profit,
+            unit: med.unit,
+            batchNumber: med.batchNumber,
+          },
+        ],
+        amount: grossAmount,
+        netAmount,
+        totalCost: costPrice,
+        profit: profit,
+        recordedBy: user?.displayName || "Sheraz khan (Admin)",
+      });
+    }
 
     showToast(
-      "Income Recorded",
-      `Sale for ${saleForm.procedureName} (Rs. ${netAmount}) logged successfully.`,
+      "Income Recorded & Stock Synced",
+      `Sale logged successfully.`,
       "success"
     );
     setIsSaleModalOpen(false);
@@ -139,7 +233,7 @@ export default function AdminFinancePage() {
 
     addExpense({
       ...expenseForm,
-      recordedBy: "Dr. Elena Vance",
+      recordedBy: user?.displayName || "Sheraz khan",
     });
 
     showToast(
@@ -194,37 +288,80 @@ export default function AdminFinancePage() {
       ),
     },
     {
-      header: "Procedure Description",
+      header: "Item Description & Type",
       accessorKey: "procedureName",
       sortable: true,
       cell: (s) => (
-        <span className="font-medium text-clinic-300 text-xs">
-          {s.procedureName}
-        </span>
+        <div>
+          <div className="flex items-center gap-1.5">
+            <span
+              className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                s.saleType === "medicine"
+                  ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30"
+                  : s.saleType === "mixed"
+                  ? "bg-gold-500/10 text-gold-400 border border-gold-500/30"
+                  : "bg-clinic-500/10 text-clinic-300 border border-clinic-500/30"
+              }`}
+            >
+              {s.saleType || "procedure"}
+            </span>
+            <span className="font-medium text-clinic-300 text-xs">
+              {s.procedureName}
+            </span>
+          </div>
+          <p className="text-[10px] text-slate-400 mt-0.5">By: {s.recordedBy}</p>
+        </div>
       ),
     },
     {
-      header: "Payment Method",
-      accessorKey: "paymentMethod",
+      header: "Buy Price (Cost)",
+      accessorKey: "totalCost",
+      sortable: true,
       cell: (s) => (
-        <span className="px-2.5 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-slate-300 text-[11px] capitalize">
-          {s.paymentMethod.replace("_", " ")}
+        <span className="font-mono text-xs text-slate-400">
+          {formatCurrency(s.totalCost || 0)}
         </span>
       ),
     },
     {
-      header: "Amount",
+      header: "Sale Price (Revenue)",
       accessorKey: "netAmount",
       sortable: true,
       cell: (s) => (
         <div className="text-right">
-          <span className="font-mono font-bold text-emerald-400 text-xs">
+          <span className="font-mono font-bold text-white text-xs">
             {formatCurrency(s.netAmount)}
           </span>
           {s.discount > 0 && (
             <p className="text-[10px] text-rose-400">-{formatCurrency(s.discount)} disc</p>
           )}
         </div>
+      ),
+    },
+    {
+      header: "Profit (Gain)",
+      accessorKey: "profit",
+      sortable: true,
+      cell: (s) => {
+        const profit = s.profit !== undefined ? s.profit : s.netAmount - (s.totalCost || 0);
+        const marginPercent = s.netAmount > 0 ? Math.round((profit / s.netAmount) * 100) : 0;
+        return (
+          <div className="text-right">
+            <span className="font-mono font-bold text-emerald-400 text-xs">
+              +{formatCurrency(profit)}
+            </span>
+            <p className="text-[10px] text-emerald-500 font-semibold">{marginPercent}% margin</p>
+          </div>
+        );
+      },
+    },
+    {
+      header: "Payment",
+      accessorKey: "paymentMethod",
+      cell: (s) => (
+        <span className="px-2.5 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-slate-300 text-[11px] capitalize">
+          {s.paymentMethod.replace("_", " ")}
+        </span>
       ),
     },
     {
@@ -236,7 +373,7 @@ export default function AdminFinancePage() {
             className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 text-[11px] font-semibold transition-colors flex items-center gap-1"
           >
             <Receipt className="w-3.5 h-3.5 text-gold-400" />
-            <span>Invoice</span>
+            <span>Receipt</span>
           </button>
           <button
             onClick={() => handleDeleteSale(s.saleId, s.invoiceNumber)}
@@ -346,46 +483,72 @@ export default function AdminFinancePage() {
       </div>
 
       {/* Summary KPI Strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="p-5 rounded-2xl bg-dark-card/90 border border-emerald-500/30 backdrop-blur-xl flex items-center justify-between">
           <div>
             <p className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">
-              Total Procedure Revenue
+              Total Sale Price (Revenue)
             </p>
             <h4 className="text-2xl font-bold text-white font-mono mt-1">
               {formatCurrency(totalIncome)}
             </h4>
+            <span className="text-[11px] text-slate-400 font-light mt-0.5 block">
+              Gross from {sales.length} transactions
+            </span>
           </div>
           <div className="p-3 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
             <ArrowUpRight className="w-6 h-6" />
           </div>
         </div>
 
-        <div className="p-5 rounded-2xl bg-dark-card/90 border border-rose-500/30 backdrop-blur-xl flex items-center justify-between">
+        <div className="p-5 rounded-2xl bg-dark-card/90 border border-amber-500/30 backdrop-blur-xl flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold text-rose-400 uppercase tracking-wider">
-              Total Operating Expenses
+            <p className="text-xs font-semibold text-amber-400 uppercase tracking-wider">
+              Cost of Goods (Buy Price)
             </p>
             <h4 className="text-2xl font-bold text-white font-mono mt-1">
-              {formatCurrency(totalExpense)}
+              {formatCurrency(totalCost)}
             </h4>
+            <span className="text-[11px] text-slate-400 font-light mt-0.5 block">
+              Procedures & Pharmacy COGS
+            </span>
           </div>
-          <div className="p-3 rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/20">
-            <ArrowDownRight className="w-6 h-6" />
+          <div className="p-3 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+            <Layers className="w-6 h-6" />
           </div>
         </div>
 
-        <div className="p-5 rounded-2xl bg-dark-card/90 border border-clinic-500/30 backdrop-blur-xl flex items-center justify-between">
+        <div className="p-5 rounded-2xl bg-dark-card/90 border border-teal-500/30 backdrop-blur-xl flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold text-clinic-300 uppercase tracking-wider">
+            <p className="text-xs font-semibold text-teal-400 uppercase tracking-wider">
+              Gross Sales Profit
+            </p>
+            <h4 className="text-2xl font-bold text-teal-300 font-mono mt-1">
+              {formatCurrency(grossProfit)}
+            </h4>
+            <span className="text-[11px] text-emerald-400 font-medium mt-0.5 block">
+              {totalIncome > 0 ? ((grossProfit / totalIncome) * 100).toFixed(1) : 0}% Margin
+            </span>
+          </div>
+          <div className="p-3 rounded-xl bg-teal-500/10 text-teal-400 border border-teal-500/20">
+            <DollarSign className="w-6 h-6" />
+          </div>
+        </div>
+
+        <div className="p-5 rounded-2xl bg-dark-card/90 border border-rose-500/30 backdrop-blur-xl flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-rose-400 uppercase tracking-wider">
               Net Clinical Profit
             </p>
             <h4 className="text-2xl font-bold text-white font-mono mt-1">
-              {formatCurrency(netMargin)}
+              {formatCurrency(grossProfit - totalExpense)}
             </h4>
+            <span className="text-[11px] text-slate-400 font-light mt-0.5 block">
+              After {formatCurrency(totalExpense)} OpEx
+            </span>
           </div>
-          <div className="p-3 rounded-xl bg-clinic-500/10 text-clinic-300 border border-clinic-500/20">
-            <DollarSign className="w-6 h-6" />
+          <div className="p-3 rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/20">
+            <ArrowDownRight className="w-6 h-6" />
           </div>
         </div>
       </div>
@@ -438,10 +601,57 @@ export default function AdminFinancePage() {
         isOpen={isSaleModalOpen}
         onClose={() => setIsSaleModalOpen(false)}
         title="Record Income Sale / Invoice"
-        subtitle="Log procedure revenue, patient details, and payment method"
+        subtitle="Log procedure or pharmacy revenue, stock deduction, and profit calculation"
         maxWidth="2xl"
       >
         <form onSubmit={handleSaleSubmit} className="space-y-4 text-xs">
+          {/* Sale Item Type Toggle */}
+          <div className="flex p-1 bg-slate-900 border border-slate-700 rounded-xl">
+            <button
+              type="button"
+              onClick={() => {
+                setSaleItemType("procedure");
+                if (treatments[0]) {
+                  setSaleForm({
+                    ...saleForm,
+                    procedureId: treatments[0].treatmentId,
+                    procedureName: treatments[0].name,
+                    amount: treatments[0].price,
+                  });
+                }
+              }}
+              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                saleItemType === "procedure"
+                  ? "bg-clinic-600 text-white shadow"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              Clinical Procedure
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSaleItemType("medicine");
+                if (pharmacy[0]) {
+                  setSelectedMedId(pharmacy[0].itemId);
+                  setSaleForm({
+                    ...saleForm,
+                    procedureId: pharmacy[0].itemId,
+                    procedureName: `${pharmacy[0].name} (${saleQuantity} ${pharmacy[0].unit})`,
+                    amount: pharmacy[0].sellingPrice * saleQuantity,
+                  });
+                }
+              }}
+              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                saleItemType === "medicine"
+                  ? "bg-emerald-600 text-white shadow"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              Pharmacy Medicine / Product
+            </button>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-slate-300 font-medium mb-1">
@@ -470,26 +680,68 @@ export default function AdminFinancePage() {
               />
             </div>
 
-            <div className="sm:col-span-2">
+            {saleItemType === "procedure" ? (
+              <div className="sm:col-span-2">
+                <label className="block text-slate-300 font-medium mb-1">
+                  Select Clinical Procedure
+                </label>
+                <select
+                  value={saleForm.procedureId}
+                  onChange={(e) => handleProcedureSelect(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:border-clinic-500 focus:outline-none"
+                >
+                  {treatments.map((t) => (
+                    <option key={t.treatmentId} value={t.treatmentId}>
+                      {t.name} — Sale: Rs. {t.price} | Buy Cost: Rs. {t.costPrice || 0} ({t.category})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div className="sm:col-span-2">
+                <label className="block text-slate-300 font-medium mb-1">
+                  Select Medicine / Inventory Item (Auto Stock Deduction)
+                </label>
+                <select
+                  value={selectedMedId}
+                  onChange={(e) => handleMedicineSelect(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:border-clinic-500 focus:outline-none"
+                >
+                  {pharmacy.map((p) => (
+                    <option key={p.itemId} value={p.itemId}>
+                      {p.name} — Stock: {p.quantity} {p.unit} | Sale: Rs. {p.sellingPrice} | Cost: Rs. {p.costPrice}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div>
               <label className="block text-slate-300 font-medium mb-1">
-                Performed Clinical Procedure
+                Quantity {saleItemType === "medicine" ? "(Stock will be reduced)" : "(Sessions)"}
               </label>
-              <select
-                value={saleForm.procedureId}
-                onChange={(e) => handleProcedureSelect(e.target.value)}
+              <input
+                type="number"
+                min={1}
+                value={saleQuantity}
+                onChange={(e) => {
+                  const qty = Math.max(1, parseInt(e.target.value) || 1);
+                  setSaleQuantity(qty);
+                  if (saleItemType === "procedure") {
+                    const trt = treatments.find((t) => t.treatmentId === saleForm.procedureId);
+                    if (trt) setSaleForm((f) => ({ ...f, amount: trt.price * qty }));
+                  } else {
+                    const med = pharmacy.find((p) => p.itemId === selectedMedId);
+                    if (med) setSaleForm((f) => ({ ...f, amount: med.sellingPrice * qty }));
+                  }
+                }}
                 className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:border-clinic-500 focus:outline-none"
-              >
-                {treatments.map((t) => (
-                  <option key={t.treatmentId} value={t.treatmentId}>
-                    {t.name} — Rs. {t.price} ({t.category})
-                  </option>
-                ))}
-              </select>
+              />
             </div>
 
             <div>
               <label className="block text-slate-300 font-medium mb-1">
-                Procedure Amount (Rs.)
+                Total Selling Price (Rs.)
               </label>
               <input
                 type="number"
@@ -540,7 +792,7 @@ export default function AdminFinancePage() {
               </select>
             </div>
 
-            <div>
+            <div className="sm:col-span-2">
               <label className="block text-slate-300 font-medium mb-1">Sale Date</label>
               <input
                 type="date"
@@ -564,12 +816,35 @@ export default function AdminFinancePage() {
             />
           </div>
 
-          <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500/30 flex items-center justify-between">
-            <span className="text-emerald-300 font-medium">Net Amount Payable:</span>
-            <span className="text-base font-bold text-white font-mono">
-              {formatCurrency(Math.max(0, saleForm.amount - saleForm.discount))}
-            </span>
-          </div>
+          {/* Financial Breakdown Preview */}
+          {(() => {
+            const netAmount = Math.max(0, saleForm.amount - saleForm.discount);
+            let estimatedCost = 0;
+            if (saleItemType === "procedure") {
+              const trt = treatments.find((t) => t.treatmentId === saleForm.procedureId);
+              estimatedCost = (trt?.costPrice || 0) * saleQuantity;
+            } else {
+              const med = pharmacy.find((p) => p.itemId === selectedMedId);
+              estimatedCost = (med?.costPrice || 0) * saleQuantity;
+            }
+            const estimatedProfit = netAmount - estimatedCost;
+            return (
+              <div className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-700 grid grid-cols-3 gap-2 text-center">
+                <div>
+                  <span className="text-[10px] text-slate-400 block uppercase">Net Sale</span>
+                  <span className="text-sm font-bold text-white font-mono">{formatCurrency(netAmount)}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-amber-400 block uppercase">Buy Cost (COGS)</span>
+                  <span className="text-sm font-bold text-amber-400 font-mono">{formatCurrency(estimatedCost)}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-emerald-400 block uppercase">Gross Profit</span>
+                  <span className="text-sm font-bold text-emerald-400 font-mono">{formatCurrency(estimatedProfit)}</span>
+                </div>
+              </div>
+            );
+          })()}
 
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
             <button

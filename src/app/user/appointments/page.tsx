@@ -18,22 +18,39 @@ import {
   Edit2,
   Trash2,
   CheckCircle2,
+  Receipt,
+  ShoppingCart,
 } from "lucide-react";
+import { InvoicePreview } from "@/components/ui/InvoicePreview";
+import { generateInvoiceNumber } from "@/lib/utils";
+import { Sale, PaymentMethod } from "@/types";
+import { useAuth } from "@/context/AuthContext";
 
 export default function UserAppointmentsPage() {
+  const { user } = useAuth();
   const {
     appointments,
     employees,
     treatments,
     contacts,
+    settings,
     addAppointment,
     updateAppointment,
     deleteAppointment,
+    addSale,
   } = useData();
   const { showToast } = useToast();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingApt, setEditingApt] = useState<Appointment | null>(null);
+  const [billingApt, setBillingApt] = useState<Appointment | null>(null);
+  const [activeReceiptSale, setActiveReceiptSale] = useState<Sale | null>(null);
+
+  const [billForm, setBillForm] = useState({
+    discount: 0,
+    paymentMethod: "credit_card" as PaymentMethod,
+    notes: "",
+  });
 
   const [form, setForm] = useState({
     customerName: "",
@@ -49,6 +66,73 @@ export default function UserAppointmentsPage() {
     price: treatments[0]?.price || 300,
     notes: "",
   });
+
+  const handleOpenBilling = (apt: Appointment) => {
+    setBillingApt(apt);
+    setBillForm({
+      discount: 0,
+      paymentMethod: "credit_card",
+      notes: `Appointment on ${apt.appointmentDate} with ${apt.employeeName}`,
+    });
+  };
+
+  const handleBillingSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!billingApt) return;
+
+    const trt = treatments.find((t) => t.treatmentId === billingApt.procedureId);
+    const costPrice = trt?.costPrice || 0;
+    const grossAmount = billingApt.price;
+    const netAmount = Math.max(0, grossAmount - billForm.discount);
+    const profit = netAmount - costPrice;
+
+    // 1. Create Sale
+    const newSale = addSale({
+      invoiceNumber: generateInvoiceNumber(),
+      appointmentId: billingApt.appointmentId,
+      customerName: billingApt.customerName,
+      customerPhone: billingApt.customerPhone,
+      customerEmail: billingApt.customerEmail,
+      saleType: "procedure",
+      procedureId: billingApt.procedureId,
+      procedureName: billingApt.procedureName,
+      items: [
+        {
+          id: billingApt.procedureId,
+          name: billingApt.procedureName,
+          type: "procedure",
+          quantity: 1,
+          unitPrice: grossAmount,
+          costPrice: costPrice,
+          totalAmount: grossAmount,
+          totalCost: costPrice,
+          profit: profit,
+          unit: "session",
+        },
+      ],
+      amount: grossAmount,
+      discount: billForm.discount,
+      netAmount: netAmount,
+      totalCost: costPrice,
+      profit: profit,
+      paymentMethod: billForm.paymentMethod,
+      saleDate: new Date().toISOString().split("T")[0],
+      recordedBy: user?.displayName || "Isabella Rossi (Reception)",
+      notes: billForm.notes,
+    });
+
+    // 2. Mark appointment completed
+    updateAppointment(billingApt.appointmentId, { status: "completed" });
+
+    showToast(
+      "Bill Created & Paid",
+      `Invoice ${newSale.invoiceNumber} generated for ${billingApt.customerName}.`,
+      "success"
+    );
+
+    setBillingApt(null);
+    setActiveReceiptSale(newSale);
+  };
 
   const handleOpenAdd = () => {
     setEditingApt(null);
@@ -216,7 +300,15 @@ export default function UserAppointmentsPage() {
     {
       header: "Actions",
       cell: (apt) => (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => handleOpenBilling(apt)}
+            title="Checkout & Print Receipt"
+            className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold transition-all flex items-center gap-1 shadow-sm"
+          >
+            <Receipt className="w-3.5 h-3.5" />
+            <span>Bill</span>
+          </button>
           <button
             onClick={() => handleOpenEdit(apt)}
             title="Edit Booking"
@@ -403,6 +495,120 @@ export default function UserAppointmentsPage() {
           </div>
         </form>
       </Modal>
+
+      {/* Appointment Quick Billing Modal */}
+      <Modal
+        isOpen={Boolean(billingApt)}
+        onClose={() => setBillingApt(null)}
+        title={`Checkout & Generate Invoice: ${billingApt?.customerName}`}
+        subtitle={`Procedure: ${billingApt?.procedureName} • Rate: ${formatCurrency(billingApt?.price || 0)}`}
+        maxWidth="lg"
+      >
+        {billingApt && (
+          <form onSubmit={handleBillingSubmit} className="space-y-4 text-xs">
+            <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
+              <p className="text-slate-300">
+                <span className="font-semibold text-white">Patient:</span> {billingApt.customerName} ({billingApt.customerPhone})
+              </p>
+              <p className="text-slate-300">
+                <span className="font-semibold text-white">Procedure:</span> {billingApt.procedureName}
+              </p>
+              <p className="text-slate-300">
+                <span className="font-semibold text-white">Physician:</span> {billingApt.employeeName}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">
+                  Payment Method
+                </label>
+                <select
+                  value={billForm.paymentMethod}
+                  onChange={(e) =>
+                    setBillForm({
+                      ...billForm,
+                      paymentMethod: e.target.value as PaymentMethod,
+                    })
+                  }
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white focus:border-emerald-500 focus:outline-none capitalize"
+                >
+                  <option value="credit_card">Credit Card</option>
+                  <option value="cash">Cash</option>
+                  <option value="debit_card">Debit Card</option>
+                  <option value="bank_transfer">Bank Transfer</option>
+                  <option value="digital_wallet">Digital Wallet</option>
+                  <option value="insurance">Insurance</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">
+                  Discount (Rs.)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={billForm.discount}
+                  onChange={(e) =>
+                    setBillForm({
+                      ...billForm,
+                      discount: parseFloat(e.target.value) || 0,
+                    })
+                  }
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white focus:border-emerald-500 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-slate-300 font-semibold mb-1">
+                Receipt / Billing Notes
+              </label>
+              <input
+                type="text"
+                value={billForm.notes}
+                onChange={(e) =>
+                  setBillForm({ ...billForm, notes: e.target.value })
+                }
+                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white focus:border-emerald-500 focus:outline-none"
+              />
+            </div>
+
+            <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/30 flex items-center justify-between font-mono">
+              <span className="text-emerald-300">Total Charged:</span>
+              <span className="text-base font-bold text-white">
+                {formatCurrency(Math.max(0, billingApt.price - billForm.discount))}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setBillingApt(null)}
+                className="px-4 py-2 rounded-xl border border-slate-700 text-slate-300 hover:bg-slate-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold shadow-lg transition-all flex items-center gap-1.5"
+              >
+                <Receipt className="w-4 h-4" />
+                <span>Complete & Print Receipt</span>
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      {/* Invoice Receipt Modal */}
+      <InvoicePreview
+        isOpen={Boolean(activeReceiptSale)}
+        onClose={() => setActiveReceiptSale(null)}
+        sale={activeReceiptSale}
+        settings={settings}
+      />
     </div>
   );
 }

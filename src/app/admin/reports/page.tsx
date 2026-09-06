@@ -20,6 +20,7 @@ import {
   Filter,
   Sparkles,
   Calendar,
+  Layers,
 } from "lucide-react";
 
 export default function AdminReportsPage() {
@@ -27,9 +28,6 @@ export default function AdminReportsPage() {
   const { showToast } = useToast();
 
   const todayStr = new Date().toISOString().split("T")[0];
-  const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
-    .toISOString()
-    .split("T")[0];
 
   const [startDate, setStartDate] = useState<string>("2024-01-01");
   const [endDate, setEndDate] = useState<string>(todayStr);
@@ -60,11 +58,16 @@ export default function AdminReportsPage() {
     () => filteredSales.reduce((sum, s) => sum + s.netAmount, 0),
     [filteredSales]
   );
+  const totalCost = useMemo(
+    () => filteredSales.reduce((sum, s) => sum + (s.totalCost || 0), 0),
+    [filteredSales]
+  );
+  const grossProfit = totalIncome - totalCost;
   const totalExpense = useMemo(
     () => filteredExpenses.reduce((sum, e) => sum + e.amount, 0),
     [filteredExpenses]
   );
-  const netProfit = totalIncome - totalExpense;
+  const netProfit = grossProfit - totalExpense;
   const avgTicket = filteredSales.length > 0 ? totalIncome / filteredSales.length : 0;
 
   // Chart data
@@ -82,11 +85,11 @@ export default function AdminReportsPage() {
 
   const trendChartData = useMemo(() => {
     return [
-      { name: "Period Start", income: totalIncome * 0.4, expenses: totalExpense * 0.4, netProfit: (totalIncome - totalExpense) * 0.4 },
-      { name: "Mid Period", income: totalIncome * 0.7, expenses: totalExpense * 0.65, netProfit: (totalIncome - totalExpense) * 0.7 },
+      { name: "Period Start", income: totalIncome * 0.4, expenses: totalExpense * 0.4, netProfit: (grossProfit - totalExpense) * 0.4 },
+      { name: "Mid Period", income: totalIncome * 0.7, expenses: totalExpense * 0.65, netProfit: (grossProfit - totalExpense) * 0.7 },
       { name: "Current Period", income: totalIncome, expenses: totalExpense, netProfit: netProfit },
     ];
-  }, [totalIncome, totalExpense, netProfit]);
+  }, [totalIncome, totalExpense, grossProfit, netProfit]);
 
   // Export handlers
   const handleExportPDF = () => {
@@ -103,6 +106,8 @@ export default function AdminReportsPage() {
       sales: filteredSales,
       expenses: filteredExpenses,
       totalIncome,
+      totalCost,
+      grossProfit,
       totalExpense,
       netProfit,
     });
@@ -111,21 +116,27 @@ export default function AdminReportsPage() {
   };
 
   const handleExportCSV = () => {
-    const csvRows = filteredSales.map((s) => ({
-      "Invoice Number": s.invoiceNumber,
-      "Date": s.saleDate,
-      "Patient Name": s.customerName,
-      "Phone": s.customerPhone,
-      "Procedure": s.procedureName,
-      "Payment Method": s.paymentMethod,
-      "Gross Amount (Rs.)": s.amount,
-      "Discount (Rs.)": s.discount,
-      "Net Amount (Rs.)": s.netAmount,
-      "Recorded By": s.recordedBy,
-    }));
+    const csvRows = filteredSales.map((s) => {
+      const costVal = s.totalCost || 0;
+      const profitVal = s.profit !== undefined ? s.profit : s.netAmount - costVal;
+      return {
+        "Invoice Number": s.invoiceNumber,
+        "Date": s.saleDate,
+        "Patient Name": s.customerName,
+        "Phone": s.customerPhone,
+        "Item / Procedure": s.procedureName,
+        "Type": s.saleType || "procedure",
+        "Payment Method": s.paymentMethod,
+        "Buy Price / Cost (Rs.)": costVal,
+        "Sale Price / Revenue (Rs.)": s.netAmount,
+        "Gross Profit (Rs.)": profitVal,
+        "Profit Margin (%)": s.netAmount > 0 ? `${((profitVal / s.netAmount) * 100).toFixed(1)}%` : "0%",
+        "Recorded By": s.recordedBy,
+      };
+    });
 
-    exportToCSV(`Shezi_Aesthetics_Sales_${startDate}_to_${endDate}`, csvRows);
-    showToast("CSV Export Complete", "Sales ledger downloaded as CSV.", "info");
+    exportToCSV(`Shezi_Aesthetics_Sales_Audit_${startDate}_to_${endDate}`, csvRows);
+    showToast("CSV Export Complete", "Sales ledger with buy/sale prices downloaded as CSV.", "info");
   };
 
   const columns: Column<Sale>[] = [
@@ -155,12 +166,33 @@ export default function AdminReportsPage() {
       ),
     },
     {
-      header: "Procedure",
+      header: "Item / Procedure",
       accessorKey: "procedureName",
       sortable: true,
-      cell: (s) => (
-        <span className="font-semibold text-clinic-300 text-xs">{s.procedureName}</span>
-      ),
+      cell: (s) => {
+        const typeBadge =
+          s.saleType === "medicine"
+            ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
+            : s.saleType === "mixed"
+            ? "bg-purple-500/10 text-purple-300 border-purple-500/30"
+            : "bg-clinic-500/10 text-clinic-300 border-clinic-500/30";
+
+        return (
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5">
+              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase border ${typeBadge}`}>
+                {s.saleType || "procedure"}
+              </span>
+              <span className="font-semibold text-slate-200 text-xs truncate max-w-[180px]">
+                {s.procedureName}
+              </span>
+            </div>
+            {s.items && s.items.length > 1 && (
+              <p className="text-[10px] text-slate-400">+{s.items.length - 1} item(s)</p>
+            )}
+          </div>
+        );
+      },
     },
     {
       header: "Method",
@@ -172,14 +204,41 @@ export default function AdminReportsPage() {
       ),
     },
     {
-      header: "Net Amount",
+      header: "Buy Price (Cost)",
+      accessorKey: "totalCost",
+      sortable: true,
+      cell: (s) => (
+        <span className="font-mono font-medium text-amber-400 text-xs">
+          {formatCurrency(s.totalCost || 0)}
+        </span>
+      ),
+    },
+    {
+      header: "Sale Price (Revenue)",
       accessorKey: "netAmount",
       sortable: true,
       cell: (s) => (
-        <span className="font-mono font-bold text-emerald-400 text-xs">
+        <span className="font-mono font-bold text-white text-xs">
           {formatCurrency(s.netAmount)}
         </span>
       ),
+    },
+    {
+      header: "Gross Profit",
+      accessorKey: "profit",
+      sortable: true,
+      cell: (s) => {
+        const profitVal = s.profit !== undefined ? s.profit : s.netAmount - (s.totalCost || 0);
+        const margin = s.netAmount > 0 ? ((profitVal / s.netAmount) * 100).toFixed(0) : 0;
+        return (
+          <div>
+            <span className="font-mono font-bold text-emerald-400 text-xs block">
+              +{formatCurrency(profitVal)}
+            </span>
+            <span className="text-[10px] text-emerald-400/80">{margin}% margin</span>
+          </div>
+        );
+      },
     },
   ];
 
@@ -193,10 +252,10 @@ export default function AdminReportsPage() {
             <span>Executive Analytics & Audits</span>
           </div>
           <h2 className="text-2xl sm:text-3xl font-extrabold text-white font-display">
-            Financial & Procedure Reports
+            Financial & Profit Margin Reports
           </h2>
           <p className="text-xs sm:text-sm text-slate-400 font-light mt-0.5">
-            Filter income and operating expenses by custom date ranges and specific clinical procedures.
+            Audit sale prices, actual purchase costs (COGS), gross profits, and operating margins with custom filters.
           </p>
         </div>
 
@@ -252,10 +311,10 @@ export default function AdminReportsPage() {
       </div>
 
       {/* Aggregate KPI Strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <div className="p-4 rounded-2xl bg-dark-card/90 border border-emerald-500/30 backdrop-blur-xl">
           <p className="text-xs text-emerald-400 font-semibold uppercase tracking-wider">
-            Filtered Revenue
+            Total Sale Price
           </p>
           <h4 className="text-2xl font-bold text-white font-mono mt-1">
             {formatCurrency(totalIncome)}
@@ -265,9 +324,31 @@ export default function AdminReportsPage() {
           </p>
         </div>
 
+        <div className="p-4 rounded-2xl bg-dark-card/90 border border-amber-500/30 backdrop-blur-xl">
+          <p className="text-xs text-amber-400 font-semibold uppercase tracking-wider">
+            Cost of Goods (Buy)
+          </p>
+          <h4 className="text-2xl font-bold text-white font-mono mt-1">
+            {formatCurrency(totalCost)}
+          </h4>
+          <p className="text-[11px] text-slate-400 mt-1">Direct product costs</p>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-dark-card/90 border border-teal-500/30 backdrop-blur-xl">
+          <p className="text-xs text-teal-400 font-semibold uppercase tracking-wider">
+            Gross Sales Profit
+          </p>
+          <h4 className="text-2xl font-bold text-teal-300 font-mono mt-1">
+            {formatCurrency(grossProfit)}
+          </h4>
+          <p className="text-[11px] text-teal-400 mt-1">
+            {totalIncome > 0 ? `${((grossProfit / totalIncome) * 100).toFixed(1)}% margin` : "0%"}
+          </p>
+        </div>
+
         <div className="p-4 rounded-2xl bg-dark-card/90 border border-rose-500/30 backdrop-blur-xl">
           <p className="text-xs text-rose-400 font-semibold uppercase tracking-wider">
-            Filtered Expenses
+            Operating Expenses
           </p>
           <h4 className="text-2xl font-bold text-white font-mono mt-1">
             {formatCurrency(totalExpense)}
@@ -279,26 +360,12 @@ export default function AdminReportsPage() {
 
         <div className="p-4 rounded-2xl bg-dark-card/90 border border-clinic-500/30 backdrop-blur-xl">
           <p className="text-xs text-clinic-300 font-semibold uppercase tracking-wider">
-            Net Profit Margin
+            Net Clinical Profit
           </p>
           <h4 className="text-2xl font-bold text-white font-mono mt-1">
             {formatCurrency(netProfit)}
           </h4>
-          <p className="text-[11px] text-slate-400 mt-1">
-            {totalIncome > 0
-              ? `${Math.round((netProfit / totalIncome) * 100)}% profit ratio`
-              : "0%"}
-          </p>
-        </div>
-
-        <div className="p-4 rounded-2xl bg-dark-card/90 border border-slate-700/80 backdrop-blur-xl">
-          <p className="text-xs text-gold-400 font-semibold uppercase tracking-wider">
-            Average Ticket Size
-          </p>
-          <h4 className="text-2xl font-bold text-white font-mono mt-1">
-            {formatCurrency(avgTicket)}
-          </h4>
-          <p className="text-[11px] text-slate-400 mt-1">Per patient visit</p>
+          <p className="text-[11px] text-slate-400 mt-1">After all expenditures</p>
         </div>
       </div>
 
@@ -323,7 +390,7 @@ export default function AdminReportsPage() {
       {/* Filtered Sales Table */}
       <div className="space-y-3">
         <h3 className="text-base font-bold text-white font-display">
-          Filtered Sales Transactions ({filteredSales.length})
+          Filtered Sales & Profit Ledger ({filteredSales.length})
         </h3>
         <DataTable
           data={filteredSales}

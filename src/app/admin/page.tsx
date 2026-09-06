@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import { useData } from "@/context/DataContext";
+import { useAuth } from "@/context/AuthContext";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { StatCard } from "@/components/ui/StatCard";
 import { RevenueExpenseChart } from "@/components/charts/RevenueExpenseChart";
@@ -22,9 +23,11 @@ import {
   FileText,
   Clock,
   ShieldCheck,
+  ShoppingCart,
 } from "lucide-react";
 
 export default function AdminOverviewPage() {
+  const { user } = useAuth();
   const {
     sales,
     expenses,
@@ -112,7 +115,7 @@ export default function AdminOverviewPage() {
               <span>Executive Clinical Directorate</span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-extrabold text-white font-display tracking-tight">
-              Welcome back, Dr. Elena Vance
+              Welcome back, {user?.displayName || "Sheraz khan"}
             </h2>
             <p className="text-xs sm:text-sm text-slate-300 font-light mt-1">
               High-level clinic performance metrics, cashflow, patient flow, and staff operations.
@@ -121,10 +124,17 @@ export default function AdminOverviewPage() {
 
           <div className="flex flex-wrap items-center gap-2.5">
             <Link
-              href="/admin/reports"
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-clinic-500 to-gold-500 hover:from-clinic-600 hover:to-gold-600 text-white text-xs font-bold shadow-glow transition-all"
+              href="/admin/sales"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-clinic-600 hover:from-emerald-500 hover:to-clinic-500 text-white text-xs font-bold shadow-glow transition-all"
             >
-              <FileText className="w-4 h-4" />
+              <ShoppingCart className="w-4 h-4" />
+              <span>Open Sales POS</span>
+            </Link>
+            <Link
+              href="/admin/reports"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold transition-all shadow-md"
+            >
+              <FileText className="w-4 h-4 text-clinic-400" />
               <span>Generate Audit Report</span>
             </Link>
           </div>
@@ -304,41 +314,49 @@ export default function AdminOverviewPage() {
                 <th className="px-4 py-3">Invoice #</th>
                 <th className="px-4 py-3">Date</th>
                 <th className="px-4 py-3">Customer</th>
-                <th className="px-4 py-3">Procedure</th>
-                <th className="px-4 py-3">Payment</th>
-                <th className="px-4 py-3 text-right">Net Amount</th>
+                <th className="px-4 py-3">Item / Procedure</th>
+                <th className="px-4 py-3 text-right">Buy Cost</th>
+                <th className="px-4 py-3 text-right">Sale Price</th>
+                <th className="px-4 py-3 text-right">Profit</th>
                 <th className="px-4 py-3 text-center">Receipt</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800">
-              {sales.slice(0, 5).map((sale) => (
-                <tr key={sale.saleId} className="hover:bg-slate-800/40 transition-colors">
-                  <td className="px-4 py-3 font-mono font-semibold text-white">
-                    {sale.invoiceNumber}
-                  </td>
-                  <td className="px-4 py-3">{formatDate(sale.saleDate)}</td>
-                  <td className="px-4 py-3 font-medium text-slate-200">
-                    {sale.customerName}
-                  </td>
-                  <td className="px-4 py-3 text-clinic-300 font-medium">
-                    {sale.procedureName}
-                  </td>
-                  <td className="px-4 py-3 capitalize">
-                    {sale.paymentMethod.replace("_", " ")}
-                  </td>
-                  <td className="px-4 py-3 text-right font-bold text-emerald-400 font-mono">
-                    {formatCurrency(sale.netAmount)}
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <button
-                      onClick={() => setSelectedSaleForInvoice(sale)}
-                      className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 text-[11px] font-semibold transition-colors"
-                    >
-                      View Invoice
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {sales.slice(0, 5).map((sale) => {
+                const costVal = sale.totalCost || 0;
+                const profitVal = sale.profit !== undefined ? sale.profit : sale.netAmount - costVal;
+                return (
+                  <tr key={sale.saleId} className="hover:bg-slate-800/40 transition-colors">
+                    <td className="px-4 py-3 font-mono font-semibold text-white">
+                      {sale.invoiceNumber}
+                    </td>
+                    <td className="px-4 py-3">{formatDate(sale.saleDate)}</td>
+                    <td className="px-4 py-3 font-medium text-slate-200">
+                      {sale.customerName}
+                    </td>
+                    <td className="px-4 py-3 text-clinic-300 font-medium truncate max-w-[150px]">
+                      {sale.procedureName}
+                    </td>
+                    <td className="px-4 py-3 text-right font-medium text-amber-400 font-mono">
+                      {formatCurrency(costVal)}
+                    </td>
+                    <td className="px-4 py-3 text-right font-bold text-white font-mono">
+                      {formatCurrency(sale.netAmount)}
+                    </td>
+                    <td className="px-4 py-3 text-right font-bold text-emerald-400 font-mono">
+                      +{formatCurrency(profitVal)}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <button
+                        onClick={() => setSelectedSaleForInvoice(sale)}
+                        className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 text-[11px] font-semibold transition-colors"
+                      >
+                        Receipt
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

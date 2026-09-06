@@ -125,7 +125,7 @@ export function Header() {
                     )}
                   </div>
                   <p className="text-[11px] text-slate-400 truncate">
-                    Dr. Elena Vance (Full Oversight)
+                    Sheraz khan (Full Clinical Oversight)
                   </p>
                 </div>
               </button>

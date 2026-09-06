@@ -338,7 +338,7 @@ export default function AdminContactsPage() {
               rows={3}
               value={formData.notes}
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              placeholder="e.g. Regular HydraFacial client, prefers morning appointments with Dr. Vance."
+              placeholder="e.g. Regular HydraFacial client, prefers morning appointments with Dr. Sheraz Khan."
               className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:border-clinic-500 focus:outline-none custom-scrollbar"
             />
           </div>

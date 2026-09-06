@@ -16,6 +16,7 @@ import {
   DollarSign,
   Filter,
   Briefcase,
+  Layers,
 } from "lucide-react";
 
 export default function ManagerReportsPage() {
@@ -49,19 +50,24 @@ export default function ManagerReportsPage() {
     () => filteredSales.reduce((sum, s) => sum + s.netAmount, 0),
     [filteredSales]
   );
+  const totalCost = useMemo(
+    () => filteredSales.reduce((sum, s) => sum + (s.totalCost || 0), 0),
+    [filteredSales]
+  );
+  const grossProfit = totalIncome - totalCost;
   const totalExpense = useMemo(
     () => filteredExpenses.reduce((sum, e) => sum + e.amount, 0),
     [filteredExpenses]
   );
-  const netProfit = totalIncome - totalExpense;
+  const netProfit = grossProfit - totalExpense;
 
   const chartData = useMemo(() => {
     return [
-      { name: "Period Start", income: totalIncome * 0.4, expenses: totalExpense * 0.4, netProfit: (totalIncome - totalExpense) * 0.4 },
-      { name: "Mid Period", income: totalIncome * 0.7, expenses: totalExpense * 0.65, netProfit: (totalIncome - totalExpense) * 0.7 },
+      { name: "Period Start", income: totalIncome * 0.4, expenses: totalExpense * 0.4, netProfit: (grossProfit - totalExpense) * 0.4 },
+      { name: "Mid Period", income: totalIncome * 0.7, expenses: totalExpense * 0.65, netProfit: (grossProfit - totalExpense) * 0.7 },
       { name: "Current Period", income: totalIncome, expenses: totalExpense, netProfit: netProfit },
     ];
-  }, [totalIncome, totalExpense, netProfit]);
+  }, [totalIncome, totalExpense, grossProfit, netProfit]);
 
   const handleExportPDF = () => {
     const activeProcName =
@@ -77,6 +83,8 @@ export default function ManagerReportsPage() {
       sales: filteredSales,
       expenses: filteredExpenses,
       totalIncome,
+      totalCost,
+      grossProfit,
       totalExpense,
       netProfit,
     });
@@ -85,16 +93,24 @@ export default function ManagerReportsPage() {
   };
 
   const handleExportCSV = () => {
-    const csvRows = filteredSales.map((s) => ({
-      "Invoice Number": s.invoiceNumber,
-      "Date": s.saleDate,
-      "Patient": s.customerName,
-      "Phone": s.customerPhone,
-      "Procedure": s.procedureName,
-      "Method": s.paymentMethod,
-      "Net Amount (Rs.)": s.netAmount,
-      "Recorded By": s.recordedBy,
-    }));
+    const csvRows = filteredSales.map((s) => {
+      const costVal = s.totalCost || 0;
+      const profitVal = s.profit !== undefined ? s.profit : s.netAmount - costVal;
+      return {
+        "Invoice Number": s.invoiceNumber,
+        "Date": s.saleDate,
+        "Patient": s.customerName,
+        "Phone": s.customerPhone,
+        "Item / Procedure": s.procedureName,
+        "Type": s.saleType || "procedure",
+        "Method": s.paymentMethod,
+        "Buy Price / Cost (Rs.)": costVal,
+        "Sale Price / Revenue (Rs.)": s.netAmount,
+        "Gross Profit (Rs.)": profitVal,
+        "Margin (%)": s.netAmount > 0 ? `${((profitVal / s.netAmount) * 100).toFixed(1)}%` : "0%",
+        "Recorded By": s.recordedBy,
+      };
+    });
 
     exportToCSV(`Manager_Financial_Report_${startDate}_to_${endDate}`, csvRows);
     showToast("CSV Export Downloaded", "Sales transactions exported.", "info");
@@ -122,10 +138,28 @@ export default function ManagerReportsPage() {
       cell: (s) => <span className="font-bold text-slate-200 text-xs">{s.customerName}</span>,
     },
     {
-      header: "Procedure",
+      header: "Item / Procedure",
       accessorKey: "procedureName",
       sortable: true,
-      cell: (s) => <span className="font-semibold text-amber-300 text-xs">{s.procedureName}</span>,
+      cell: (s) => {
+        const typeBadge =
+          s.saleType === "medicine"
+            ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
+            : s.saleType === "mixed"
+            ? "bg-purple-500/10 text-purple-300 border-purple-500/30"
+            : "bg-clinic-500/10 text-clinic-300 border-clinic-500/30";
+
+        return (
+          <div className="flex items-center gap-1.5">
+            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase border ${typeBadge}`}>
+              {s.saleType || "procedure"}
+            </span>
+            <span className="font-semibold text-slate-200 text-xs truncate max-w-[180px]">
+              {s.procedureName}
+            </span>
+          </div>
+        );
+      },
     },
     {
       header: "Payment",
@@ -137,14 +171,37 @@ export default function ManagerReportsPage() {
       ),
     },
     {
-      header: "Net Amount",
+      header: "Buy Cost",
+      accessorKey: "totalCost",
+      sortable: true,
+      cell: (s) => (
+        <span className="font-mono font-medium text-amber-400 text-xs">
+          {formatCurrency(s.totalCost || 0)}
+        </span>
+      ),
+    },
+    {
+      header: "Sale Price",
       accessorKey: "netAmount",
       sortable: true,
       cell: (s) => (
-        <span className="font-mono font-bold text-emerald-400 text-xs">
+        <span className="font-mono font-bold text-white text-xs">
           {formatCurrency(s.netAmount)}
         </span>
       ),
+    },
+    {
+      header: "Profit",
+      accessorKey: "profit",
+      sortable: true,
+      cell: (s) => {
+        const profitVal = s.profit !== undefined ? s.profit : s.netAmount - (s.totalCost || 0);
+        return (
+          <span className="font-mono font-bold text-emerald-400 text-xs">
+            +{formatCurrency(profitVal)}
+          </span>
+        );
+      },
     },
   ];
 
@@ -161,7 +218,7 @@ export default function ManagerReportsPage() {
             Financial & Sales Reports
           </h2>
           <p className="text-xs sm:text-sm text-slate-400 font-light mt-0.5">
-            Filter income and expenditures by custom dates and procedures with audit exports.
+            Audit sale prices, actual purchase costs (COGS), gross profits, and operating margins with custom filters.
           </p>
         </div>
 
@@ -215,10 +272,10 @@ export default function ManagerReportsPage() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="p-4 rounded-2xl bg-dark-card/90 border border-emerald-500/30 backdrop-blur-xl">
           <p className="text-xs text-emerald-400 font-semibold uppercase">
-            Filtered Revenue
+            Total Sale Price
           </p>
           <h4 className="text-2xl font-bold text-white font-mono mt-1">
             {formatCurrency(totalIncome)}
@@ -228,9 +285,31 @@ export default function ManagerReportsPage() {
           </p>
         </div>
 
+        <div className="p-4 rounded-2xl bg-dark-card/90 border border-amber-500/30 backdrop-blur-xl">
+          <p className="text-xs text-amber-400 font-semibold uppercase">
+            Cost of Goods (Buy)
+          </p>
+          <h4 className="text-2xl font-bold text-white font-mono mt-1">
+            {formatCurrency(totalCost)}
+          </h4>
+          <p className="text-[11px] text-slate-400 mt-1">Inventory & treatment COGS</p>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-dark-card/90 border border-teal-500/30 backdrop-blur-xl">
+          <p className="text-xs text-teal-400 font-semibold uppercase">
+            Gross Sales Profit
+          </p>
+          <h4 className="text-2xl font-bold text-teal-300 font-mono mt-1">
+            {formatCurrency(grossProfit)}
+          </h4>
+          <p className="text-[11px] text-teal-400 mt-1">
+            {totalIncome > 0 ? `${((grossProfit / totalIncome) * 100).toFixed(1)}% margin` : "0%"}
+          </p>
+        </div>
+
         <div className="p-4 rounded-2xl bg-dark-card/90 border border-rose-500/30 backdrop-blur-xl">
           <p className="text-xs text-rose-400 font-semibold uppercase">
-            Filtered Expenses
+            Operating Expenses
           </p>
           <h4 className="text-2xl font-bold text-white font-mono mt-1">
             {formatCurrency(totalExpense)}
@@ -238,16 +317,6 @@ export default function ManagerReportsPage() {
           <p className="text-[11px] text-slate-400 mt-1">
             {filteredExpenses.length} Expense records
           </p>
-        </div>
-
-        <div className="p-4 rounded-2xl bg-dark-card/90 border border-amber-500/30 backdrop-blur-xl">
-          <p className="text-xs text-amber-300 font-semibold uppercase">
-            Net Margin
-          </p>
-          <h4 className="text-2xl font-bold text-white font-mono mt-1">
-            {formatCurrency(netProfit)}
-          </h4>
-          <p className="text-[11px] text-slate-400 mt-1">Operating surplus</p>
         </div>
       </div>
 
@@ -261,7 +330,7 @@ export default function ManagerReportsPage() {
       {/* Sales Transactions */}
       <div className="space-y-3">
         <h3 className="text-base font-bold text-white font-display">
-          Sales Transactions Breakdown ({filteredSales.length})
+          Sales & Profit Transactions Breakdown ({filteredSales.length})
         </h3>
         <DataTable
           data={filteredSales}

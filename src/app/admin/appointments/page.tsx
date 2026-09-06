@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from "react";
 import { useData } from "@/context/DataContext";
+import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { Appointment, AppointmentStatus } from "@/types";
 import { DataTable, Column } from "@/components/ui/DataTable";
@@ -24,6 +25,7 @@ import {
 } from "lucide-react";
 
 export default function AdminAppointmentsPage() {
+  const { user } = useAuth();
   const {
     appointments,
     employees,
@@ -130,7 +132,7 @@ export default function AdminAppointmentsPage() {
     } else {
       addAppointment({
         ...formData,
-        createdBy: "Dr. Elena Vance",
+        createdBy: user?.displayName || "Sheraz khan",
       });
       showToast(
         "Appointment Booked",

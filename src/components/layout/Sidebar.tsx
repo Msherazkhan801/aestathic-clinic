@@ -25,6 +25,7 @@ import {
   ShieldCheck,
   Briefcase,
   UserCheck,
+  ShoppingCart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -37,6 +38,7 @@ export function Sidebar() {
   // Define navigation items per role
   const adminNav = [
     { label: "Overview", href: "/admin", icon: LayoutDashboard },
+    { label: "POS Sales Counter", href: "/admin/sales", icon: ShoppingCart },
     { label: "Users & Managers", href: "/admin/users", icon: UserCheck },
     { label: "Staff & Doctors", href: "/admin/employees", icon: Users },
     { label: "Attendance Sheet", href: "/admin/attendance", icon: CalendarCheck },
@@ -52,8 +54,10 @@ export function Sidebar() {
 
   const managerNav = [
     { label: "Manager Dashboard", href: "/manager", icon: LayoutDashboard },
-    { label: "Mark Attendance", href: "/manager/attendance", icon: CalendarCheck },
+    { label: "POS Sales Counter", href: "/manager/sales", icon: ShoppingCart },
     { label: "Record Sales & Expenses", href: "/manager/finance", icon: DollarSign },
+    { label: "Treatments Catalog", href: "/manager/treatments", icon: Sparkle },
+    { label: "Mark Attendance", href: "/manager/attendance", icon: CalendarCheck },
     { label: "Salary Calculation", href: "/manager/salaries", icon: CreditCard },
     { label: "Staff Shift Timings", href: "/manager/employees", icon: Clock },
     { label: "Financial Reports", href: "/manager/reports", icon: FileBarChart },
@@ -62,6 +66,7 @@ export function Sidebar() {
 
   const userNav = [
     { label: "Reception Overview", href: "/user", icon: LayoutDashboard },
+    { label: "Sales & POS Counter", href: "/user/sales", icon: ShoppingCart },
     { label: "Book Appointments", href: "/user/appointments", icon: Calendar },
     { label: "Patient Directory", href: "/user/contacts", icon: Contact },
     { label: "Treatment Price List", href: "/user/treatments", icon: Sparkle },

@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from "react";
 import { useData } from "@/context/DataContext";
+import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { SalaryRecord, SalaryStatus } from "@/types";
 import { DataTable, Column } from "@/components/ui/DataTable";
@@ -20,6 +21,7 @@ import {
 } from "lucide-react";
 
 export default function AdminSalariesPage() {
+  const { user } = useAuth();
   const {
     salaries,
     employees,
@@ -44,7 +46,7 @@ export default function AdminSalariesPage() {
   const pendingCount = monthSalaries.filter((s) => s.status !== "paid").length;
 
   const handleGeneratePayroll = () => {
-    generateMonthlySalaries(selectedMonth, "Dr. Elena Vance");
+    generateMonthlySalaries(selectedMonth, user?.displayName || "Sheraz khan");
     showToast(
       "Monthly Payroll Computed",
       `Payroll for ${selectedMonth} calculated across ${employees.length} staff based on attendance records.`,

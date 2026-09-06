@@ -18,16 +18,27 @@ import {
   Pill,
   ArrowRight,
   CheckCircle2,
+  ShoppingCart,
+  Receipt,
 } from "lucide-react";
 
 export default function UserOverviewPage() {
-  const { appointments, contacts, pharmacy, treatments, updateAppointment } = useData();
+  const { appointments, contacts, pharmacy, treatments, sales, updateAppointment } = useData();
   const { showToast } = useToast();
 
   const todayStr = new Date().toISOString().split("T")[0];
   const todayAppointments = useMemo(
     () => appointments.filter((a) => a.appointmentDate === todayStr),
     [appointments, todayStr]
+  );
+
+  const todaySales = useMemo(
+    () => sales.filter((s) => s.saleDate === todayStr),
+    [sales, todayStr]
+  );
+  const todaySalesRevenue = useMemo(
+    () => todaySales.reduce((sum, s) => sum + s.netAmount, 0),
+    [todaySales]
   );
 
   const completedToday = todayAppointments.filter((a) => a.status === "completed").length;
@@ -57,24 +68,24 @@ export default function UserOverviewPage() {
               Welcome, Isabella Rossi
             </h2>
             <p className="text-xs sm:text-sm text-slate-300 font-light mt-1">
-              Manage incoming patients, schedule clinical appointments, look up prices, and dispense post-care products.
+              Manage incoming patients, record procedure and medicine sales, and issue instant receipts.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
             <Link
-              href="/user/appointments"
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold shadow-lg transition-all"
+              href="/user/sales"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-clinic-600 hover:from-emerald-500 hover:to-clinic-500 text-white text-xs font-bold shadow-glow transition-all"
             >
-              <Plus className="w-4 h-4" />
-              <span>Book Appointment</span>
+              <ShoppingCart className="w-4 h-4" />
+              <span>Open Sales POS</span>
             </Link>
             <Link
-              href="/user/contacts"
+              href="/user/appointments"
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold transition-all"
             >
-              <Users className="w-4 h-4 text-clinic-400" />
-              <span>New Patient</span>
+              <Calendar className="w-4 h-4 text-emerald-400" />
+              <span>Book Appointment</span>
             </Link>
           </div>
         </div>
@@ -83,24 +94,24 @@ export default function UserOverviewPage() {
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         <StatCard
+          title="Today's Sales Revenue"
+          value={formatCurrency(todaySalesRevenue)}
+          subtitle={`${todaySales.length} transaction${todaySales.length !== 1 ? "s" : ""} today`}
+          icon={Receipt}
+          variant="emerald"
+        />
+        <StatCard
           title="Today's Appointments"
           value={todayAppointments.length}
           subtitle={`${upcomingToday} upcoming today`}
           icon={Calendar}
-          variant="emerald"
+          variant="gold"
         />
         <StatCard
           title="In Treatment Room"
           value={inProgressToday}
           subtitle="Currently with doctor"
           icon={Clock}
-          variant="gold"
-        />
-        <StatCard
-          title="Completed Today"
-          value={completedToday}
-          subtitle="Treatment finished"
-          icon={CheckCircle2}
           variant="rose"
         />
         <StatCard
@@ -120,7 +131,7 @@ export default function UserOverviewPage() {
               Today&apos;s Patient Reception Queue ({formatDate(todayStr)})
             </h3>
             <p className="text-xs text-slate-400">
-              Check in patients upon arrival and track treatment status
+              Check in patients upon arrival, send to doctor, and bill upon completion
             </p>
           </div>
           <Link
@@ -202,15 +213,30 @@ export default function UserOverviewPage() {
       </div>
 
       {/* Quick Action Navigation Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <Link
-          href="/user/contacts"
+          href="/user/sales"
           className="group p-6 rounded-3xl bg-dark-card/90 border border-slate-700/80 hover:border-emerald-500/50 backdrop-blur-xl transition-all shadow-glass-dark hover:-translate-y-1 space-y-2"
         >
           <div className="p-3 rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 w-fit">
-            <Users className="w-6 h-6" />
+            <ShoppingCart className="w-6 h-6" />
           </div>
           <h4 className="text-base font-bold text-white font-display group-hover:text-emerald-300">
+            Billing & Sales POS
+          </h4>
+          <p className="text-xs text-slate-400 font-light">
+            Sell clinical procedures and dispense cosmeceuticals with instant receipts.
+          </p>
+        </Link>
+
+        <Link
+          href="/user/contacts"
+          className="group p-6 rounded-3xl bg-dark-card/90 border border-slate-700/80 hover:border-clinic-500/50 backdrop-blur-xl transition-all shadow-glass-dark hover:-translate-y-1 space-y-2"
+        >
+          <div className="p-3 rounded-2xl bg-clinic-500/10 text-clinic-400 border border-clinic-500/20 w-fit">
+            <Users className="w-6 h-6" />
+          </div>
+          <h4 className="text-base font-bold text-white font-display group-hover:text-clinic-300">
             Patient CRM Directory
           </h4>
           <p className="text-xs text-slate-400 font-light">
@@ -220,12 +246,12 @@ export default function UserOverviewPage() {
 
         <Link
           href="/user/treatments"
-          className="group p-6 rounded-3xl bg-dark-card/90 border border-slate-700/80 hover:border-clinic-500/50 backdrop-blur-xl transition-all shadow-glass-dark hover:-translate-y-1 space-y-2"
+          className="group p-6 rounded-3xl bg-dark-card/90 border border-slate-700/80 hover:border-gold-500/50 backdrop-blur-xl transition-all shadow-glass-dark hover:-translate-y-1 space-y-2"
         >
-          <div className="p-3 rounded-2xl bg-clinic-500/10 text-clinic-400 border border-clinic-500/20 w-fit">
+          <div className="p-3 rounded-2xl bg-gold-500/10 text-gold-400 border border-gold-500/20 w-fit">
             <Sparkle className="w-6 h-6" />
           </div>
-          <h4 className="text-base font-bold text-white font-display group-hover:text-clinic-300">
+          <h4 className="text-base font-bold text-white font-display group-hover:text-gold-300">
             Treatment Price Lookup
           </h4>
           <p className="text-xs text-slate-400 font-light">
@@ -235,13 +261,13 @@ export default function UserOverviewPage() {
 
         <Link
           href="/user/pharmacy"
-          className="group p-6 rounded-3xl bg-dark-card/90 border border-slate-700/80 hover:border-gold-500/50 backdrop-blur-xl transition-all shadow-glass-dark hover:-translate-y-1 space-y-2"
+          className="group p-6 rounded-3xl bg-dark-card/90 border border-slate-700/80 hover:border-teal-500/50 backdrop-blur-xl transition-all shadow-glass-dark hover:-translate-y-1 space-y-2"
         >
-          <div className="p-3 rounded-2xl bg-gold-500/10 text-gold-400 border border-gold-500/20 w-fit">
+          <div className="p-3 rounded-2xl bg-teal-500/10 text-teal-400 border border-teal-500/20 w-fit">
             <Pill className="w-6 h-6" />
           </div>
-          <h4 className="text-base font-bold text-white font-display group-hover:text-gold-300">
-            Pharmacy Dispensary
+          <h4 className="text-base font-bold text-white font-display group-hover:text-teal-300">
+            Pharmacy Stock Counter
           </h4>
           <p className="text-xs text-slate-400 font-light">
             Check in-stock skincare bottles, post-laser balms, and log patient dispensed items.

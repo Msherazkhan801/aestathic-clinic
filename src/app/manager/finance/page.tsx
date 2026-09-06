@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from "react";
 import { useData } from "@/context/DataContext";
+import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { Sale, Expense, PaymentMethod, ExpenseCategory } from "@/types";
 import { DataTable, Column } from "@/components/ui/DataTable";
@@ -15,8 +16,11 @@ import {
   Receipt,
   Trash2,
   Briefcase,
+  Layers,
   ArrowUpRight,
   ArrowDownRight,
+  TrendingUp,
+  Package,
 } from "lucide-react";
 
 const PAYMENT_METHODS: PaymentMethod[] = [
@@ -40,10 +44,12 @@ const EXPENSE_CATEGORIES: ExpenseCategory[] = [
 ];
 
 export default function ManagerFinancePage() {
+  const { user } = useAuth();
   const {
     sales,
     expenses,
     treatments,
+    pharmacy,
     settings,
     addSale,
     deleteSale,
@@ -58,6 +64,9 @@ export default function ManagerFinancePage() {
   const [selectedInvoiceSale, setSelectedInvoiceSale] = useState<Sale | null>(null);
 
   // New Sale State
+  const [saleItemType, setSaleItemType] = useState<"procedure" | "medicine">("procedure");
+  const [selectedMedId, setSelectedMedId] = useState<string>(pharmacy[0]?.itemId || "");
+  const [saleQuantity, setSaleQuantity] = useState<number>(1);
   const [saleForm, setSaleForm] = useState({
     customerName: "",
     customerPhone: "",
@@ -79,15 +88,21 @@ export default function ManagerFinancePage() {
     expenseDate: new Date().toISOString().split("T")[0],
   });
 
+  // Aggregates
   const totalIncome = useMemo(
     () => sales.reduce((sum, s) => sum + s.netAmount, 0),
     [sales]
   );
+  const totalCost = useMemo(
+    () => sales.reduce((sum, s) => sum + (s.totalCost || 0), 0),
+    [sales]
+  );
+  const grossProfit = totalIncome - totalCost;
   const totalExpense = useMemo(
     () => expenses.reduce((sum, e) => sum + e.amount, 0),
     [expenses]
   );
-  const netMargin = totalIncome - totalExpense;
+  const netMargin = grossProfit - totalExpense;
 
   const handleProcedureSelect = (trtId: string) => {
     const trt = treatments.find((t) => t.treatmentId === trtId);
@@ -96,7 +111,20 @@ export default function ManagerFinancePage() {
         ...saleForm,
         procedureId: trt.treatmentId,
         procedureName: trt.name,
-        amount: trt.price,
+        amount: trt.price * saleQuantity,
+      });
+    }
+  };
+
+  const handleMedicineSelect = (medId: string) => {
+    setSelectedMedId(medId);
+    const med = pharmacy.find((p) => p.itemId === medId);
+    if (med) {
+      setSaleForm({
+        ...saleForm,
+        procedureId: med.itemId,
+        procedureName: `${med.name} (${saleQuantity} ${med.unit})`,
+        amount: med.sellingPrice * saleQuantity,
       });
     }
   };
@@ -108,17 +136,85 @@ export default function ManagerFinancePage() {
       return;
     }
 
-    const netAmount = Math.max(0, saleForm.amount - saleForm.discount);
-    addSale({
-      ...saleForm,
-      invoiceNumber: generateInvoiceNumber(),
-      netAmount,
-      recordedBy: "Alexander Wright",
-    });
+    if (saleItemType === "procedure") {
+      const trt = treatments.find((t) => t.treatmentId === saleForm.procedureId);
+      const costPrice = (trt?.costPrice || 0) * saleQuantity;
+      const grossAmount = saleForm.amount;
+      const netAmount = Math.max(0, grossAmount - saleForm.discount);
+      const profit = netAmount - costPrice;
+
+      addSale({
+        ...saleForm,
+        invoiceNumber: generateInvoiceNumber(),
+        saleType: "procedure",
+        items: [
+          {
+            id: saleForm.procedureId,
+            name: saleForm.procedureName,
+            type: "procedure",
+            quantity: saleQuantity,
+            unitPrice: trt?.price || grossAmount,
+            costPrice: trt?.costPrice || 0,
+            totalAmount: grossAmount,
+            totalCost: costPrice,
+            profit: profit,
+            unit: "session",
+          },
+        ],
+        amount: grossAmount,
+        netAmount,
+        totalCost: costPrice,
+        profit: profit,
+        recordedBy: user?.displayName || "Alexander Wright (Manager)",
+      });
+    } else {
+      const med = pharmacy.find((p) => p.itemId === selectedMedId);
+      if (!med) return;
+      if (saleQuantity > med.quantity) {
+        showToast(
+          "Insufficient Stock",
+          `Only ${med.quantity} ${med.unit} available in inventory.`,
+          "error"
+        );
+        return;
+      }
+      const grossAmount = med.sellingPrice * saleQuantity;
+      const costPrice = med.costPrice * saleQuantity;
+      const netAmount = Math.max(0, grossAmount - saleForm.discount);
+      const profit = netAmount - costPrice;
+
+      addSale({
+        ...saleForm,
+        invoiceNumber: generateInvoiceNumber(),
+        saleType: "medicine",
+        procedureId: med.itemId,
+        procedureName: `${med.name} (${saleQuantity} ${med.unit})`,
+        items: [
+          {
+            id: med.itemId,
+            name: med.name,
+            type: "medicine",
+            quantity: saleQuantity,
+            unitPrice: med.sellingPrice,
+            costPrice: med.costPrice,
+            totalAmount: grossAmount,
+            totalCost: costPrice,
+            profit: profit,
+            unit: med.unit,
+            batchNumber: med.batchNumber,
+          },
+        ],
+        amount: grossAmount,
+        netAmount,
+        totalCost: costPrice,
+        profit: profit,
+        recordedBy: user?.displayName || "Alexander Wright (Manager)",
+      });
+    }
 
     showToast(
-      "Income Recorded",
-      `Sale for ${saleForm.procedureName} (Rs. ${netAmount}) logged successfully.`,
+      "Income Recorded & Stock Updated",
+      `Sale logged successfully.`,
       "success"
     );
     setIsSaleModalOpen(false);
@@ -133,7 +229,7 @@ export default function ManagerFinancePage() {
 
     addExpense({
       ...expenseForm,
-      recordedBy: "Alexander Wright",
+      recordedBy: user?.displayName || "Alexander Wright (Manager)",
     });
 
     showToast(
@@ -162,7 +258,7 @@ export default function ManagerFinancePage() {
       cell: (s) => formatDate(s.saleDate),
     },
     {
-      header: "Patient",
+      header: "Patient / Client",
       accessorKey: "customerName",
       sortable: true,
       cell: (s) => (
@@ -173,12 +269,37 @@ export default function ManagerFinancePage() {
       ),
     },
     {
-      header: "Procedure",
+      header: "Item / Procedure",
       accessorKey: "procedureName",
       sortable: true,
-      cell: (s) => (
-        <span className="font-medium text-clinic-300 text-xs">{s.procedureName}</span>
-      ),
+      cell: (s) => {
+        const typeBadge =
+          s.saleType === "medicine"
+            ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
+            : s.saleType === "mixed"
+            ? "bg-purple-500/10 text-purple-300 border-purple-500/30"
+            : "bg-clinic-500/10 text-clinic-300 border-clinic-500/30";
+
+        return (
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5">
+              <span
+                className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border ${typeBadge}`}
+              >
+                {s.saleType || "procedure"}
+              </span>
+              <span className="font-medium text-slate-200 text-xs truncate max-w-[180px]">
+                {s.procedureName}
+              </span>
+            </div>
+            {s.items && s.items.length > 1 && (
+              <p className="text-[10px] text-slate-400">
+                +{s.items.length - 1} more item(s)
+              </p>
+            )}
+          </div>
+        );
+      },
     },
     {
       header: "Payment",
@@ -190,25 +311,69 @@ export default function ManagerFinancePage() {
       ),
     },
     {
-      header: "Net Amount",
+      header: "Buy Price (Cost)",
+      accessorKey: "totalCost",
+      sortable: true,
+      cell: (s) => (
+        <span className="font-mono font-medium text-amber-400 text-xs">
+          {formatCurrency(s.totalCost || 0)}
+        </span>
+      ),
+    },
+    {
+      header: "Sale Price (Revenue)",
       accessorKey: "netAmount",
       sortable: true,
       cell: (s) => (
-        <span className="font-mono font-bold text-emerald-400 text-xs">
+        <span className="font-mono font-bold text-white text-xs">
           {formatCurrency(s.netAmount)}
         </span>
       ),
     },
     {
-      header: "Receipt",
+      header: "Profit (Gain)",
+      accessorKey: "profit",
+      sortable: true,
+      cell: (s) => {
+        const profitVal = s.profit !== undefined ? s.profit : s.netAmount - (s.totalCost || 0);
+        const marginPct = s.netAmount > 0 ? ((profitVal / s.netAmount) * 100).toFixed(0) : 0;
+        return (
+          <div>
+            <span className="font-mono font-bold text-emerald-400 text-xs block">
+              +{formatCurrency(profitVal)}
+            </span>
+            <span className="text-[10px] font-medium text-emerald-400/80 bg-emerald-950/60 px-1.5 py-0.2 rounded border border-emerald-800/40">
+              {marginPct}% margin
+            </span>
+          </div>
+        );
+      },
+    },
+    {
+      header: "Actions",
       cell: (s) => (
-        <button
-          onClick={() => setSelectedInvoiceSale(s)}
-          className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 text-[11px] font-semibold transition-colors flex items-center gap-1"
-        >
-          <Receipt className="w-3.5 h-3.5 text-gold-400" />
-          <span>Invoice</span>
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => setSelectedInvoiceSale(s)}
+            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 text-[11px] font-semibold transition-colors flex items-center gap-1"
+            title="Print Receipt / PDF"
+          >
+            <Receipt className="w-3.5 h-3.5 text-gold-400" />
+            <span>Receipt</span>
+          </button>
+          <button
+            onClick={() => {
+              if (confirm(`Delete sale invoice ${s.invoiceNumber}?`)) {
+                deleteSale(s.saleId);
+                showToast("Sale Removed", "The invoice has been deleted.", "info");
+              }
+            }}
+            className="p-1.5 text-slate-400 hover:text-rose-400 transition-colors"
+            title="Delete Sale"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
       ),
     },
   ];
@@ -253,6 +418,23 @@ export default function ManagerFinancePage() {
         </span>
       ),
     },
+    {
+      header: "Actions",
+      cell: (e) => (
+        <button
+          onClick={() => {
+            if (confirm(`Delete expense "${e.description}"?`)) {
+              deleteExpense(e.expenseId);
+              showToast("Expense Deleted", "Expense entry removed.", "info");
+            }
+          }}
+          className="p-1.5 text-slate-400 hover:text-rose-400 transition-colors"
+          title="Delete Expense"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      ),
+    },
   ];
 
   return (
@@ -265,10 +447,10 @@ export default function ManagerFinancePage() {
             <span>Manager Financial Ledger</span>
           </div>
           <h2 className="text-2xl sm:text-3xl font-extrabold text-white font-display">
-            Record Clinic Sales & Expenses
+            Clinic Sales, Buy Costs & Profits
           </h2>
           <p className="text-xs sm:text-sm text-slate-400 font-light mt-0.5">
-            Log procedure sales, issue invoices, and record operating expenses.
+            Real-time audit of sale prices, actual inventory buy costs, gross profits, and operating expenses.
           </p>
         </div>
 
@@ -291,41 +473,73 @@ export default function ManagerFinancePage() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="p-4 rounded-2xl bg-dark-card/90 border border-emerald-500/30 backdrop-blur-xl flex items-center justify-between">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="p-5 rounded-2xl bg-dark-card/90 border border-emerald-500/30 backdrop-blur-xl flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold text-emerald-400 uppercase">
-              Total Sales Income
+            <p className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">
+              Total Sale Price (Revenue)
             </p>
             <h4 className="text-2xl font-bold text-white font-mono mt-1">
               {formatCurrency(totalIncome)}
             </h4>
+            <span className="text-[11px] text-slate-400 font-light mt-0.5 block">
+              Gross from {sales.length} transactions
+            </span>
           </div>
-          <ArrowUpRight className="w-6 h-6 text-emerald-400" />
+          <div className="p-3 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            <ArrowUpRight className="w-6 h-6" />
+          </div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-dark-card/90 border border-rose-500/30 backdrop-blur-xl flex items-center justify-between">
+        <div className="p-5 rounded-2xl bg-dark-card/90 border border-amber-500/30 backdrop-blur-xl flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold text-rose-400 uppercase">
-              Total Expenses
+            <p className="text-xs font-semibold text-amber-400 uppercase tracking-wider">
+              Cost of Goods (Buy Price)
             </p>
             <h4 className="text-2xl font-bold text-white font-mono mt-1">
-              {formatCurrency(totalExpense)}
+              {formatCurrency(totalCost)}
             </h4>
+            <span className="text-[11px] text-slate-400 font-light mt-0.5 block">
+              Procedures & Pharmacy COGS
+            </span>
           </div>
-          <ArrowDownRight className="w-6 h-6 text-rose-400" />
+          <div className="p-3 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+            <Layers className="w-6 h-6" />
+          </div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-dark-card/90 border border-clinic-500/30 backdrop-blur-xl flex items-center justify-between">
+        <div className="p-5 rounded-2xl bg-dark-card/90 border border-teal-500/30 backdrop-blur-xl flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold text-clinic-300 uppercase">
-              Net Profit
+            <p className="text-xs font-semibold text-teal-400 uppercase tracking-wider">
+              Gross Sales Profit
+            </p>
+            <h4 className="text-2xl font-bold text-teal-300 font-mono mt-1">
+              {formatCurrency(grossProfit)}
+            </h4>
+            <span className="text-[11px] text-emerald-400 font-medium mt-0.5 block">
+              {totalIncome > 0 ? ((grossProfit / totalIncome) * 100).toFixed(1) : 0}% Margin
+            </span>
+          </div>
+          <div className="p-3 rounded-xl bg-teal-500/10 text-teal-400 border border-teal-500/20">
+            <DollarSign className="w-6 h-6" />
+          </div>
+        </div>
+
+        <div className="p-5 rounded-2xl bg-dark-card/90 border border-rose-500/30 backdrop-blur-xl flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-rose-400 uppercase tracking-wider">
+              Net Profit (After OpEx)
             </p>
             <h4 className="text-2xl font-bold text-white font-mono mt-1">
               {formatCurrency(netMargin)}
             </h4>
+            <span className="text-[11px] text-slate-400 font-light mt-0.5 block">
+              After {formatCurrency(totalExpense)} OpEx
+            </span>
           </div>
-          <DollarSign className="w-6 h-6 text-clinic-300" />
+          <div className="p-3 rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/20">
+            <ArrowDownRight className="w-6 h-6" />
+          </div>
         </div>
       </div>
 
@@ -359,14 +573,14 @@ export default function ManagerFinancePage() {
         <DataTable
           data={sales}
           columns={saleColumns}
-          searchPlaceholder="Search sales by patient or invoice..."
+          searchPlaceholder="Search sales by patient, invoice number, or product..."
           searchKey="customerName"
         />
       ) : (
         <DataTable
           data={expenses}
           columns={expenseColumns}
-          searchPlaceholder="Search expenses..."
+          searchPlaceholder="Search expenses by category, vendor, or description..."
           searchKey="description"
         />
       )}
@@ -375,15 +589,62 @@ export default function ManagerFinancePage() {
       <Modal
         isOpen={isSaleModalOpen}
         onClose={() => setIsSaleModalOpen(false)}
-        title="Record Procedure Sale"
-        subtitle="Log cashier transaction and customer procedure"
+        title="Record Income Sale / Invoice"
+        subtitle="Log procedure or pharmacy revenue, stock deduction, and profit calculation"
         maxWidth="2xl"
       >
         <form onSubmit={handleSaleSubmit} className="space-y-4 text-xs">
+          {/* Sale Item Type Toggle */}
+          <div className="flex p-1 bg-slate-900 border border-slate-700 rounded-xl">
+            <button
+              type="button"
+              onClick={() => {
+                setSaleItemType("procedure");
+                if (treatments[0]) {
+                  setSaleForm({
+                    ...saleForm,
+                    procedureId: treatments[0].treatmentId,
+                    procedureName: treatments[0].name,
+                    amount: treatments[0].price * saleQuantity,
+                  });
+                }
+              }}
+              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                saleItemType === "procedure"
+                  ? "bg-clinic-600 text-white shadow"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              Clinical Procedure
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSaleItemType("medicine");
+                if (pharmacy[0]) {
+                  setSelectedMedId(pharmacy[0].itemId);
+                  setSaleForm({
+                    ...saleForm,
+                    procedureId: pharmacy[0].itemId,
+                    procedureName: `${pharmacy[0].name} (${saleQuantity} ${pharmacy[0].unit})`,
+                    amount: pharmacy[0].sellingPrice * saleQuantity,
+                  });
+                }
+              }}
+              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                saleItemType === "medicine"
+                  ? "bg-emerald-600 text-white shadow"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              Pharmacy Medicine / Product
+            </button>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-slate-300 font-medium mb-1">
-                Patient Name
+                Patient / Customer Name
               </label>
               <input
                 type="text"
@@ -408,26 +669,68 @@ export default function ManagerFinancePage() {
               />
             </div>
 
-            <div className="sm:col-span-2">
+            {saleItemType === "procedure" ? (
+              <div className="sm:col-span-2">
+                <label className="block text-slate-300 font-medium mb-1">
+                  Select Clinical Procedure
+                </label>
+                <select
+                  value={saleForm.procedureId}
+                  onChange={(e) => handleProcedureSelect(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:border-amber-500 focus:outline-none"
+                >
+                  {treatments.map((t) => (
+                    <option key={t.treatmentId} value={t.treatmentId}>
+                      {t.name} — Sale: Rs. {t.price} | Buy Cost: Rs. {t.costPrice || 0} ({t.category})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div className="sm:col-span-2">
+                <label className="block text-slate-300 font-medium mb-1">
+                  Select Medicine / Inventory Item (Auto Stock Deduction)
+                </label>
+                <select
+                  value={selectedMedId}
+                  onChange={(e) => handleMedicineSelect(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:border-amber-500 focus:outline-none"
+                >
+                  {pharmacy.map((p) => (
+                    <option key={p.itemId} value={p.itemId}>
+                      {p.name} — Stock: {p.quantity} {p.unit} | Sale: Rs. {p.sellingPrice} | Cost: Rs. {p.costPrice}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div>
               <label className="block text-slate-300 font-medium mb-1">
-                Procedure
+                Quantity {saleItemType === "medicine" ? "(Stock will be reduced)" : "(Sessions)"}
               </label>
-              <select
-                value={saleForm.procedureId}
-                onChange={(e) => handleProcedureSelect(e.target.value)}
+              <input
+                type="number"
+                min={1}
+                value={saleQuantity}
+                onChange={(e) => {
+                  const qty = Math.max(1, parseInt(e.target.value) || 1);
+                  setSaleQuantity(qty);
+                  if (saleItemType === "procedure") {
+                    const trt = treatments.find((t) => t.treatmentId === saleForm.procedureId);
+                    if (trt) setSaleForm((f) => ({ ...f, amount: trt.price * qty }));
+                  } else {
+                    const med = pharmacy.find((p) => p.itemId === selectedMedId);
+                    if (med) setSaleForm((f) => ({ ...f, amount: med.sellingPrice * qty }));
+                  }
+                }}
                 className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:border-amber-500 focus:outline-none"
-              >
-                {treatments.map((t) => (
-                  <option key={t.treatmentId} value={t.treatmentId}>
-                    {t.name} — Rs. {t.price}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
 
             <div>
               <label className="block text-slate-300 font-medium mb-1">
-                Amount (Rs.)
+                Total Selling Price (Rs.)
               </label>
               <input
                 type="number"
@@ -475,8 +778,8 @@ export default function ManagerFinancePage() {
               </select>
             </div>
 
-            <div>
-              <label className="block text-slate-300 font-medium mb-1">Date</label>
+            <div className="sm:col-span-2">
+              <label className="block text-slate-300 font-medium mb-1">Sale Date</label>
               <input
                 type="date"
                 value={saleForm.saleDate}
@@ -485,6 +788,49 @@ export default function ManagerFinancePage() {
               />
             </div>
           </div>
+
+          <div>
+            <label className="block text-slate-300 font-medium mb-1">
+              Cashier Notes
+            </label>
+            <input
+              type="text"
+              value={saleForm.notes}
+              onChange={(e) => setSaleForm({ ...saleForm, notes: e.target.value })}
+              placeholder="e.g. Paid in full via debit terminal"
+              className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:border-amber-500 focus:outline-none"
+            />
+          </div>
+
+          {/* Financial Breakdown Preview */}
+          {(() => {
+            const netAmount = Math.max(0, saleForm.amount - saleForm.discount);
+            let estimatedCost = 0;
+            if (saleItemType === "procedure") {
+              const trt = treatments.find((t) => t.treatmentId === saleForm.procedureId);
+              estimatedCost = (trt?.costPrice || 0) * saleQuantity;
+            } else {
+              const med = pharmacy.find((p) => p.itemId === selectedMedId);
+              estimatedCost = (med?.costPrice || 0) * saleQuantity;
+            }
+            const estimatedProfit = netAmount - estimatedCost;
+            return (
+              <div className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-700 grid grid-cols-3 gap-2 text-center">
+                <div>
+                  <span className="text-[10px] text-slate-400 block uppercase">Net Sale</span>
+                  <span className="text-sm font-bold text-white font-mono">{formatCurrency(netAmount)}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-amber-400 block uppercase">Buy Cost (COGS)</span>
+                  <span className="text-sm font-bold text-amber-400 font-mono">{formatCurrency(estimatedCost)}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-emerald-400 block uppercase">Gross Profit</span>
+                  <span className="text-sm font-bold text-emerald-400 font-mono">{formatCurrency(estimatedProfit)}</span>
+                </div>
+              </div>
+            );
+          })()}
 
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
             <button
