@@ -7,6 +7,7 @@ import { AttendanceRecord, AttendanceStatus } from "@/types";
 import { DataTable, Column } from "@/components/ui/DataTable";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Modal } from "@/components/ui/Modal";
+import { BulkQrPrintModal } from "@/components/attendance/BulkQrPrintModal";
 import { formatDate } from "@/lib/utils";
 import {
   CalendarCheck,
@@ -18,10 +19,12 @@ import {
   Calendar,
   Sparkles,
   TrendingUp,
+  QrCode,
+  Printer,
 } from "lucide-react";
 
 export default function AdminAttendancePage() {
-  const { employees, attendance, markAttendance } = useData();
+  const { employees, attendance, markAttendance, settings } = useData();
   const { showToast } = useToast();
 
   const [selectedDate, setSelectedDate] = useState<string>(
@@ -29,6 +32,7 @@ export default function AdminAttendancePage() {
   );
   const [selectedEmployeeFilter, setSelectedEmployeeFilter] = useState<string>("ALL");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isQrModalOpen, setIsQrModalOpen] = useState(false);
 
   // Manual record form
   const [targetEmpId, setTargetEmpId] = useState(employees[0]?.employeeId || "");
@@ -197,13 +201,22 @@ export default function AdminAttendancePage() {
           </p>
         </div>
 
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-clinic-500 to-gold-500 hover:from-clinic-600 hover:to-gold-600 text-white font-bold text-xs uppercase tracking-wider shadow-glow transition-all"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Record Custom Entry</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            onClick={() => setIsQrModalOpen(true)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-dark-card border border-slate-700 hover:border-slate-600 text-slate-200 text-xs font-bold shadow-md transition-all"
+          >
+            <Printer className="w-4 h-4 text-clinic-400" />
+            <span>Staff QR Badges & Print</span>
+          </button>
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-clinic-500 to-gold-500 hover:from-clinic-600 hover:to-gold-600 text-white font-bold text-xs uppercase tracking-wider shadow-glow transition-all"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Record Custom Entry</span>
+          </button>
+        </div>
       </div>
 
       {/* Date & Filter Toolbar */}
@@ -463,6 +476,14 @@ export default function AdminAttendancePage() {
           </div>
         </form>
       </Modal>
+
+      {/* Bulk QR Print Modal */}
+      <BulkQrPrintModal
+        isOpen={isQrModalOpen}
+        onClose={() => setIsQrModalOpen(false)}
+        employees={employees}
+        clinicName={settings.clinicName || "SHEZI AESTHETICS"}
+      />
     </div>
   );
 }

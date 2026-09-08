@@ -26,7 +26,10 @@ import {
   KeyRound,
   CheckCircle2,
   Filter,
+  QrCode,
+  Printer,
 } from "lucide-react";
+import { EmployeeQrBadge } from "@/components/attendance/EmployeeQrBadge";
 
 const DESIGNATION_OPTIONS: Designation[] = [
   "Lead Aesthetic Physician",
@@ -46,6 +49,7 @@ export default function AdminEmployeesPage() {
   const [roleFilter, setRoleFilter] = useState<string>("ALL");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
+  const [viewingQrEmployee, setViewingQrEmployee] = useState<Employee | null>(null);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -253,6 +257,16 @@ export default function AdminEmployeesPage() {
       header: "Actions",
       cell: (emp) => (
         <div className="flex items-center gap-2">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setViewingQrEmployee(emp);
+            }}
+            title="View & Print Staff QR Badge"
+            className="p-1.5 rounded-lg bg-clinic-500/10 hover:bg-clinic-500/20 text-clinic-400 hover:text-clinic-300 transition-colors"
+          >
+            <QrCode className="w-4 h-4" />
+          </button>
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -668,6 +682,23 @@ export default function AdminEmployeesPage() {
           </div>
         </form>
       </Modal>
+
+      {/* Single Employee QR Badge Modal */}
+      {viewingQrEmployee && (
+        <Modal
+          isOpen={!!viewingQrEmployee}
+          onClose={() => setViewingQrEmployee(null)}
+          title="Staff Digital ID & QR Badge"
+          maxWidth="md"
+        >
+          <div className="py-2">
+            <EmployeeQrBadge
+              employee={viewingQrEmployee}
+              clinicName="SHEZI AESTHETICS"
+            />
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

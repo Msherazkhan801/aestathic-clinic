@@ -26,6 +26,7 @@ import {
   Briefcase,
   UserCheck,
   ShoppingCart,
+  QrCode,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -67,6 +68,7 @@ export function Sidebar() {
   const userNav = [
     { label: "Reception Overview", href: "/user", icon: LayoutDashboard },
     { label: "Sales & POS Counter", href: "/user/sales", icon: ShoppingCart },
+    { label: "Staff QR Attendance", href: "/user/attendance", icon: QrCode },
     { label: "Book Appointments", href: "/user/appointments", icon: Calendar },
     { label: "Patient Directory", href: "/user/contacts", icon: Contact },
     { label: "Treatment Price List", href: "/user/treatments", icon: Sparkle },

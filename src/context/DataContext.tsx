@@ -94,6 +94,19 @@ interface DataContextType {
     checkOut?: string,
     remarks?: string
   ) => void;
+  recordQrAttendance: (
+    qrPayload: string,
+    mode?: "auto" | "check-in" | "check-out",
+    customTime?: string
+  ) => {
+    success: boolean;
+    message: string;
+    record?: AttendanceRecord;
+    employee?: Employee;
+    actionType: "check-in" | "check-out" | "already-completed" | "error";
+    time: string;
+    date: string;
+  };
 
   // Salaries
   salaries: SalaryRecord[];
@@ -617,7 +630,178 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  // Salaries
+  const recordQrAttendance = (
+    qrPayload: string,
+    mode: "auto" | "check-in" | "check-out" = "auto",
+    customTime?: string
+  ) => {
+    const now = new Date();
+    const targetDate = now.toISOString().split("T")[0];
+    const currentTimeStr =
+      customTime ||
+      `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+
+    // 1. Resolve Employee from QR Payload
+    let targetEmpId = "";
+    const cleanPayload = qrPayload.trim();
+
+    try {
+      if (cleanPayload.startsWith("{") && cleanPayload.endsWith("}")) {
+        const parsed = JSON.parse(cleanPayload);
+        targetEmpId = parsed.employeeId || parsed.id || parsed.empId || "";
+      }
+    } catch {
+      // Not JSON, continue with string patterns
+    }
+
+    if (!targetEmpId) {
+      if (cleanPayload.startsWith("ACMS:EMP:")) {
+        targetEmpId = cleanPayload.replace("ACMS:EMP:", "").trim();
+      } else if (cleanPayload.startsWith("EMP:")) {
+        targetEmpId = cleanPayload.replace("EMP:", "").trim();
+      } else {
+        targetEmpId = cleanPayload;
+      }
+    }
+
+    // Match by employeeId, email, or exact name
+    const emp = employees.find(
+      (e) =>
+        e.employeeId.toLowerCase() === targetEmpId.toLowerCase() ||
+        e.email.toLowerCase() === targetEmpId.toLowerCase() ||
+        e.name.toLowerCase() === targetEmpId.toLowerCase()
+    );
+
+    if (!emp) {
+      return {
+        success: false,
+        message: `Employee not found for QR token "${cleanPayload}". Please verify employee badge.`,
+        actionType: "error" as const,
+        time: currentTimeStr,
+        date: targetDate,
+      };
+    }
+
+    // 2. Determine Action & Update Attendance
+    let actionType: "check-in" | "check-out" | "already-completed" = "check-in";
+    let message = "";
+    let finalRecord: AttendanceRecord;
+
+    const existingRecord = attendance.find(
+      (a) => a.employeeId === emp.employeeId && a.date === targetDate
+    );
+
+    if (!existingRecord) {
+      if (mode === "check-out") {
+        actionType = "check-out";
+        finalRecord = {
+          attendanceId: `att-${Date.now()}`,
+          employeeId: emp.employeeId,
+          employeeName: emp.name,
+          date: targetDate,
+          status: "present",
+          checkIn: emp.shiftStart || "09:00",
+          checkOut: currentTimeStr,
+          markedBy: "QR Scanner",
+          remarks: "Check-out scanned via QR Badge",
+        };
+        message = `Checked out at ${currentTimeStr}. Attendance marked as Present.`;
+      } else {
+        actionType = "check-in";
+        finalRecord = {
+          attendanceId: `att-${Date.now()}`,
+          employeeId: emp.employeeId,
+          employeeName: emp.name,
+          date: targetDate,
+          status: "present",
+          checkIn: currentTimeStr,
+          checkOut: undefined,
+          markedBy: "QR Scanner",
+          remarks: "Check-in scanned via QR Badge",
+        };
+        message = `Check-in recorded at ${currentTimeStr}. Marked Present!`;
+      }
+
+      setAttendance((prev) => [finalRecord, ...prev]);
+      addDocument(COLLECTIONS.ATTENDANCE, finalRecord, finalRecord.attendanceId);
+    } else {
+      if (mode === "check-in") {
+        actionType = "check-in";
+        finalRecord = {
+          ...existingRecord,
+          status: "present",
+          checkIn: currentTimeStr,
+          markedBy: "QR Scanner",
+          remarks: existingRecord.remarks
+            ? `${existingRecord.remarks} | Updated check-in ${currentTimeStr}`
+            : "Check-in updated via QR Badge",
+        };
+        message = `Check-in updated to ${currentTimeStr}.`;
+      } else if (mode === "check-out") {
+        actionType = "check-out";
+        finalRecord = {
+          ...existingRecord,
+          status: "present",
+          checkOut: currentTimeStr,
+          markedBy: "QR Scanner",
+          remarks: existingRecord.remarks
+            ? `${existingRecord.remarks} | Check-out ${currentTimeStr}`
+            : "Check-out scanned via QR Badge",
+        };
+        message = `Check-out recorded at ${currentTimeStr}.`;
+      } else {
+        // Auto Mode
+        if (existingRecord.checkIn && !existingRecord.checkOut) {
+          actionType = "check-out";
+          finalRecord = {
+            ...existingRecord,
+            status: "present",
+            checkOut: currentTimeStr,
+            markedBy: "QR Scanner",
+            remarks: existingRecord.remarks
+              ? `${existingRecord.remarks} | Check-out ${currentTimeStr}`
+              : "Check-out scanned via QR Badge",
+          };
+          message = `Check-out recorded at ${currentTimeStr}. (Shift complete)`;
+        } else if (existingRecord.checkIn && existingRecord.checkOut) {
+          actionType = "check-out";
+          finalRecord = {
+            ...existingRecord,
+            status: "present",
+            checkOut: currentTimeStr,
+            markedBy: "QR Scanner",
+            remarks: `${existingRecord.remarks || ""} | Re-scanned check-out at ${currentTimeStr}`.trim(),
+          };
+          message = `Updated Check-out to ${currentTimeStr}.`;
+        } else {
+          actionType = "check-in";
+          finalRecord = {
+            ...existingRecord,
+            status: "present",
+            checkIn: currentTimeStr,
+            markedBy: "QR Scanner",
+            remarks: "Check-in scanned via QR Badge",
+          };
+          message = `Check-in recorded at ${currentTimeStr}. Marked Present!`;
+        }
+      }
+
+      setAttendance((prev) =>
+        prev.map((a) => (a.attendanceId === finalRecord.attendanceId ? finalRecord : a))
+      );
+      addDocument(COLLECTIONS.ATTENDANCE, finalRecord, finalRecord.attendanceId);
+    }
+
+    return {
+      success: true,
+      message,
+      record: finalRecord,
+      employee: emp,
+      actionType,
+      time: currentTimeStr,
+      date: targetDate,
+    };
+  };
   const generateMonthlySalaries = (month: string, recordedBy: string) => {
     const newSalaries: SalaryRecord[] = employees.map((emp) =>
       calculateSalaryForEmployee({
@@ -705,6 +889,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         deleteExpense,
         attendance,
         markAttendance,
+        recordQrAttendance,
         salaries,
         generateMonthlySalaries,
         updateSalaryStatus,

@@ -20,6 +20,7 @@ import {
   CheckCircle2,
   ShoppingCart,
   Receipt,
+  QrCode,
 } from "lucide-react";
 
 export default function UserOverviewPage() {
@@ -68,16 +69,23 @@ export default function UserOverviewPage() {
               Welcome, Isabella Rossi
             </h2>
             <p className="text-xs sm:text-sm text-slate-300 font-light mt-1">
-              Manage incoming patients, record procedure and medicine sales, and issue instant receipts.
+              Manage incoming patients, scan staff attendance QR badges, and issue instant sales receipts.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
             <Link
-              href="/user/sales"
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-clinic-600 hover:from-emerald-500 hover:to-clinic-500 text-white text-xs font-bold shadow-glow transition-all"
+              href="/user/attendance"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-clinic-600 hover:from-emerald-500 hover:to-clinic-500 text-white text-xs font-bold shadow-glow transition-all"
             >
-              <ShoppingCart className="w-4 h-4" />
+              <QrCode className="w-4 h-4" />
+              <span>Staff QR Scanner</span>
+            </Link>
+            <Link
+              href="/user/sales"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold transition-all"
+            >
+              <ShoppingCart className="w-4 h-4 text-emerald-400" />
               <span>Open Sales POS</span>
             </Link>
             <Link
