@@ -2,6 +2,7 @@
 
 import React, { useRef } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { Employee } from "@/types";
 import { Modal } from "@/components/ui/Modal";
 import { Printer, Sparkles, X, Download } from "lucide-react";
@@ -19,8 +20,6 @@ export function BulkQrPrintModal({
   employees,
   clinicName = "SHEZI AESTHETICS",
 }: BulkQrPrintModalProps) {
-  const printAreaRef = useRef<HTMLDivElement>(null);
-
   const handlePrintAll = () => {
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
@@ -35,6 +34,10 @@ export function BulkQrPrintModal({
           role: emp.role,
         });
 
+        const qrSvg = renderToStaticMarkup(
+          <QRCodeSVG value={qrPayload} size={130} level="H" includeMargin={false} />
+        );
+
         return `
           <div class="badge-card">
             <div class="header-title">${clinicName}</div>
@@ -45,7 +48,9 @@ export function BulkQrPrintModal({
             <div class="designation">${emp.designation}</div>
             <div class="emp-id-pill">ID: ${emp.employeeId.toUpperCase()}</div>
             
-            <div class="qr-box" id="qr-${emp.employeeId}"></div>
+            <div class="qr-box">
+              ${qrSvg}
+            </div>
             
             <div class="footer-info">
               <div>Shift: <span class="shift-time">${emp.shiftStart || "09:00"} - ${emp.shiftEnd || "17:30"}</span></div>
@@ -55,26 +60,6 @@ export function BulkQrPrintModal({
         `;
       })
       .join("");
-
-    const qrScripts = employees
-      .map((emp) => {
-        const qrPayload = JSON.stringify({
-          type: "ACMS_ATTENDANCE",
-          employeeId: emp.employeeId,
-          name: emp.name,
-          role: emp.role,
-        });
-
-        return `
-          QRCode.toString(${JSON.stringify(qrPayload)}, { type: 'svg', width: 130, margin: 1 }, function (err, string) {
-            if (!err) {
-              var el = document.getElementById('qr-${emp.employeeId}');
-              if (el) el.innerHTML = string;
-            }
-          });
-        `;
-      })
-      .join("\n");
 
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -176,6 +161,9 @@ export function BulkQrPrintModal({
               display: inline-block;
               margin-bottom: 8px;
             }
+            .qr-box svg {
+              display: block;
+            }
             .footer-info {
               font-size: 9px;
               color: #94a3b8;
@@ -191,12 +179,10 @@ export function BulkQrPrintModal({
           <div class="grid-container">
             ${cardsHtml}
           </div>
-          <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
           <script>
-            ${qrScripts}
-            setTimeout(function() {
+            window.onload = function() {
               window.print();
-            }, 600);
+            };
           </script>
         </body>
       </html>

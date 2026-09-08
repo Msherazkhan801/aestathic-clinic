@@ -2,6 +2,7 @@
 
 import React, { useRef } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { Employee } from "@/types";
 import { Sparkles, Clock, ShieldCheck, Printer, Download, UserCheck, Briefcase } from "lucide-react";
 
@@ -32,6 +33,9 @@ export function EmployeeQrBadge({
     if (!printWindow) return;
 
     const initials = employee.name.replace("Dr. ", "").slice(0, 2).toUpperCase();
+    const qrSvgString = renderToStaticMarkup(
+      <QRCodeSVG value={qrPayload} size={140} level="H" includeMargin={false} />
+    );
 
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -120,6 +124,9 @@ export function EmployeeQrBadge({
               box-shadow: 0 4px 12px rgba(0,0,0,0.15);
               margin-bottom: 14px;
             }
+            .qr-box svg {
+              display: block;
+            }
             .footer-info {
               font-size: 10px;
               color: #94a3b8;
@@ -142,7 +149,7 @@ export function EmployeeQrBadge({
             <div class="emp-id-pill">ID: ${employee.employeeId.toUpperCase()}</div>
             
             <div class="qr-box">
-              <svg id="qr-target" width="140" height="140"></svg>
+              ${qrSvgString}
             </div>
             
             <div class="footer-info">
@@ -150,14 +157,10 @@ export function EmployeeQrBadge({
               <div style="margin-top: 4px;">Scan at Front Desk to Check-In & Check-Out</div>
             </div>
           </div>
-          <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
           <script>
-            QRCode.toString(${JSON.stringify(qrPayload)}, { type: 'svg', width: 140, margin: 1 }, function (err, string) {
-              if (!err) {
-                document.querySelector('.qr-box').innerHTML = string;
-              }
+            window.onload = function() {
               window.print();
-            });
+            };
           </script>
         </body>
       </html>
@@ -251,9 +254,9 @@ export function EmployeeQrBadge({
       <div className="mt-3 flex items-center justify-center gap-2">
         <button
           onClick={handlePrintSingle}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all"
+          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-clinic-600 via-teal-600 to-emerald-600 hover:from-clinic-500 hover:to-emerald-500 text-white text-xs font-bold shadow-md transition-all"
         >
-          <Printer className="w-3.5 h-3.5 text-clinic-400" />
+          <Printer className="w-3.5 h-3.5" />
           <span>Print Badge</span>
         </button>
       </div>

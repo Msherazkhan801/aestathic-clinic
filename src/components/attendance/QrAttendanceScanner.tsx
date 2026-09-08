@@ -583,12 +583,24 @@ export function QrAttendanceScanner({ onScanSuccess }: QrAttendanceScannerProps)
             )}
           </div>
 
-          {/* Alternative Scan Methods: Image Upload & Instant Simulator */}
+          {/* Alternative Scan Methods: Phone Camera Snap, Image Upload & Instant Simulator */}
           <div className="space-y-3">
-            <div className="flex items-center gap-3">
-              <label className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-dark-card border border-slate-700/80 hover:border-slate-600 text-slate-300 hover:text-white text-xs font-semibold cursor-pointer transition-all">
-                <Upload className="w-4 h-4 text-clinic-400" />
-                <span>Scan QR from Photo File</span>
+            <div className="flex flex-col sm:flex-row items-center gap-2.5">
+              <label className="w-full flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-clinic-600/20 hover:bg-clinic-600/30 border border-clinic-500/40 text-clinic-300 hover:text-white text-xs font-bold cursor-pointer transition-all shadow-sm">
+                <Camera className="w-4 h-4 text-clinic-400" />
+                <span>Snap with Mobile Camera</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
+              </label>
+
+              <label className="w-full flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-dark-card border border-slate-700/80 hover:border-slate-600 text-slate-300 hover:text-white text-xs font-semibold cursor-pointer transition-all">
+                <Upload className="w-4 h-4 text-slate-400" />
+                <span>Upload from Gallery</span>
                 <input
                   type="file"
                   accept="image/*"
