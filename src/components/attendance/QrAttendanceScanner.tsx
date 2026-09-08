@@ -567,18 +567,42 @@ export function QrAttendanceScanner({ onScanSuccess }: QrAttendanceScannerProps)
             {cameraError && (
               <div className="mt-3 p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs space-y-2 max-w-[340px]">
                 <div className="flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span className="font-semibold">{cameraError}</span>
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-400" />
+                  <div>
+                    <p className="font-bold">Camera Access Issue</p>
+                    <p className="text-[11px] text-slate-300 mt-0.5">{cameraError}</p>
+                  </div>
+                </div>
+
+                <div className="p-2.5 rounded-lg bg-slate-950/90 border border-amber-500/30 text-[11px] text-amber-300/90 space-y-1">
+                  <p className="font-bold flex items-center gap-1 text-amber-400">
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    <span>Check Active Apps:</span>
+                  </p>
+                  <p>• Make sure you are <strong>not using Zoom, Microsoft Teams, Google Meet, FaceTime, or Skype</strong> in the background.</p>
+                  <p>• If another app or browser tab is using your camera, close it and click <strong>Turn On Camera</strong>.</p>
+                  <p>• Or tap <strong>Snap with Mobile Camera</strong> below to take a quick photo without webcam locking.</p>
                 </div>
 
                 {showPermissionHelp && (
                   <div className="p-2.5 rounded-lg bg-slate-950/90 border border-rose-500/20 text-[11px] text-slate-300 space-y-1">
-                    <p className="font-bold text-rose-300">How to Enable Camera on Phone/Browser:</p>
-                    <p>1. Tap the <strong>Lock 🔒 / Settings / Camera 📷</strong> icon in your mobile browser address bar.</p>
-                    <p>2. Set <strong>Camera</strong> to <strong>Allow</strong>.</p>
-                    <p>3. Refresh the page and tap <strong>Start Back Camera</strong>.</p>
+                    <p className="font-bold text-rose-300">How to Enable Camera Permission:</p>
+                    <p>1. Look at the left side of your browser URL bar (near <code className="text-white">localhost</code>).</p>
+                    <p>2. Tap/Click the <strong>Lock 🔒 / Settings / Camera 📷</strong> icon.</p>
+                    <p>3. Set <strong>Camera</strong> to <strong>Allow</strong>.</p>
+                    <p>4. Refresh the page and start the camera.</p>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Always visible Camera in-use reminder tip */}
+            {!cameraError && (
+              <div className="w-full max-w-[340px] mt-2.5 p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 text-[11px] text-slate-400 flex items-start gap-2">
+                <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                <p className="leading-snug">
+                  <span className="font-semibold text-slate-300">Tip:</span> Make sure your camera is not being used by <strong>Zoom, Teams, or FaceTime</strong>. If camera is occupied, use <strong>Snap with Mobile Camera</strong> or <strong>Manual Punch</strong>.
+                </p>
               </div>
             )}
           </div>
