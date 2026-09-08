@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { Html5Qrcode } from "html5-qrcode";
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { useData } from "@/context/DataContext";
 import { useToast } from "@/context/ToastContext";
 import { Employee, AttendanceRecord } from "@/types";
@@ -12,17 +12,16 @@ import {
   AlertCircle,
   Clock,
   User,
-  Sparkles,
-  RefreshCw,
   Search,
   Upload,
   Volume2,
   VolumeX,
-  ShieldCheck,
   Zap,
-  HelpCircle,
   Play,
   RotateCcw,
+  ZapOff,
+  Smartphone,
+  Info,
 } from "lucide-react";
 
 // Web Audio API Sound Generator for Real-Time Feedback
@@ -89,9 +88,12 @@ export function QrAttendanceScanner({ onScanSuccess }: QrAttendanceScannerProps)
   const [cameraFacing, setCameraFacing] = useState<"environment" | "user">("environment");
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [cameras, setCameras] = useState<{ id: string; label: string }[]>([]);
-  const [selectedCameraId, setSelectedCameraId] = useState<string>("");
+  const [selectedCameraId, setSelectedCameraId] = useState<string>("AUTO");
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [showPermissionHelp, setShowPermissionHelp] = useState(false);
+  const [isInsecureMobile, setIsInsecureMobile] = useState(false);
+  const [torchOn, setTorchOn] = useState(false);
+  const [hasTorch, setHasTorch] = useState(false);
 
   // Last punch result
   const [lastPunch, setLastPunch] = useState<{
@@ -109,28 +111,46 @@ export function QrAttendanceScanner({ onScanSuccess }: QrAttendanceScannerProps)
   const scanContainerId = "qr-attendance-reader";
   const cooldownRef = useRef(false);
 
-  // Load available camera devices
-  const loadCameras = async () => {
+  // Check if testing on mobile via insecure HTTP IP
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const isLocalhost =
+        window.location.hostname === "localhost" ||
+        window.location.hostname === "127.0.0.1";
+      const isHttps = window.location.protocol === "https:";
+      const isSecure = window.isSecureContext ?? (isLocalhost || isHttps);
+
+      if (!isSecure && !isLocalhost) {
+        setIsInsecureMobile(true);
+      }
+    }
+  }, []);
+
+  // Load available camera devices (after permission is granted)
+  const refreshCameraDevices = async () => {
     try {
+      if (typeof window === "undefined" || !navigator.mediaDevices?.enumerateDevices) return;
       const devices = await Html5Qrcode.getCameras();
       if (devices && devices.length > 0) {
-        setCameras(
-          devices.map((d, idx) => ({
-            id: d.id,
-            label:
-              d.label ||
-              (idx === 0 ? "Camera 1 (Main / Back)" : idx === 1 ? "Camera 2 (Front / Selfie)" : `Camera ${idx + 1}`),
-          }))
-        );
+        const formatted = devices.map((d, idx) => {
+          let label = d.label;
+          if (!label) {
+            label = idx === 0 ? "Camera 1 (Primary)" : `Camera ${idx + 1}`;
+          }
+          const lower = label.toLowerCase();
+          if (lower.includes("back") || lower.includes("rear") || lower.includes("environment")) {
+            label = `📸 ${label} (Back/Rear)`;
+          } else if (lower.includes("front") || lower.includes("user") || lower.includes("selfie")) {
+            label = `🤳 ${label} (Front/Selfie)`;
+          }
+          return { id: d.id, label };
+        });
+        setCameras(formatted);
       }
     } catch (err) {
-      console.warn("Could not list video devices initially:", err);
+      console.warn("Could not enumerate camera devices:", err);
     }
   };
-
-  useEffect(() => {
-    loadCameras();
-  }, []);
 
   // Handle scanned payload
   const handleScannedResult = (decodedText: string) => {
@@ -175,91 +195,167 @@ export function QrAttendanceScanner({ onScanSuccess }: QrAttendanceScannerProps)
     }, 2500);
   };
 
+  // Safely stop and cleanup previous scanner instance
+  const cleanupScanner = async () => {
+    if (scannerRef.current) {
+      try {
+        if (scannerRef.current.isScanning) {
+          await scannerRef.current.stop();
+        }
+      } catch (e) {
+        console.warn("Scanner stop warning:", e);
+      }
+      try {
+        scannerRef.current.clear();
+      } catch (e) {}
+      scannerRef.current = null;
+    }
+    setIsScanning(false);
+    setTorchOn(false);
+    setHasTorch(false);
+  };
+
   // Start Camera Scanner with target facingMode
-  const startCamera = async (targetFacing: "environment" | "user" = cameraFacing, targetDeviceId?: string) => {
+  const startCamera = async (
+    targetFacing: "environment" | "user" = cameraFacing,
+    targetDeviceId?: string
+  ) => {
     setCameraError(null);
     setShowPermissionHelp(false);
 
     try {
-      if (!scannerRef.current) {
-        scannerRef.current = new Html5Qrcode(scanContainerId);
-      }
+      // 1. Stop and clear any existing scanner session
+      await cleanupScanner();
 
-      // If already scanning, stop first
-      if (scannerRef.current.isScanning) {
-        await scannerRef.current.stop();
-        setIsScanning(false);
-      }
+      // 2. Create fresh Html5Qrcode instance with BarcodeDetector acceleration
+      const scanner = new Html5Qrcode(scanContainerId, {
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+        verbose: false,
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true,
+        },
+      });
+      scannerRef.current = scanner;
 
+      // 3. Scan configuration optimized for fast QR capture
       const scanConfig = {
-        fps: 10,
-        qrbox: { width: 220, height: 220 },
-        aspectRatio: 1.0,
+        fps: 20, // 20 frames/sec for smooth scan detection
+        qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+          const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+          const size = Math.max(180, Math.floor(minEdge * 0.85));
+          return { width: size, height: size };
+        },
+        disableFlip: targetFacing === "environment", // Never flip/invert back camera
       };
 
       let started = false;
 
-      // 1. If explicit deviceId was passed or selected
-      const deviceIdToUse = targetDeviceId || (selectedCameraId && selectedCameraId !== "AUTO" ? selectedCameraId : null);
-      if (deviceIdToUse) {
+      // Option A: If explicit hardware device ID is selected
+      const explicitDeviceId =
+        targetDeviceId || (selectedCameraId !== "AUTO" ? selectedCameraId : null);
+      if (explicitDeviceId) {
         try {
-          await scannerRef.current.start(
-            deviceIdToUse,
+          await scanner.start(
+            explicitDeviceId,
             scanConfig,
             (decodedText) => handleScannedResult(decodedText),
             () => {}
           );
           started = true;
         } catch (devErr) {
-          console.warn("DeviceId start failed, falling back to facingMode:", devErr);
+          console.warn("Explicit deviceId start failed, trying facingMode:", devErr);
         }
       }
 
-      // 2. Try requested facingMode
+      // Option B: Standard facingMode request (Best for Back & Front Cameras on iOS Safari & Android Chrome)
       if (!started) {
+        // First try standard facingMode constraint
         try {
-          await scannerRef.current.start(
+          await scanner.start(
             { facingMode: targetFacing },
             scanConfig,
             (decodedText) => handleScannedResult(decodedText),
             () => {}
           );
           started = true;
-        } catch (faceErr) {
-          console.warn(`FacingMode ${targetFacing} failed, trying opposite:`, faceErr);
+        } catch (fErr) {
+          console.warn(`facingMode: "${targetFacing}" failed, trying exact:`, fErr);
+        }
+
+        // Try exact facingMode constraint
+        if (!started) {
+          try {
+            await scanner.start(
+              { facingMode: { exact: targetFacing } },
+              scanConfig,
+              (decodedText) => handleScannedResult(decodedText),
+              () => {}
+            );
+            started = true;
+          } catch (exactErr) {
+            console.warn(`exact facingMode "${targetFacing}" failed:`, exactErr);
+          }
         }
       }
 
-      // 3. Fallback to opposite facingMode (e.g. if environment failed on laptop, use user)
+      // Option C: Fallback to opposite camera if device only has 1 camera (e.g. laptop webcam)
       if (!started) {
-        const oppositeFacing = targetFacing === "environment" ? "user" : "environment";
+        const fallbackFacing = targetFacing === "environment" ? "user" : "environment";
         try {
-          await scannerRef.current.start(
-            { facingMode: oppositeFacing },
+          await scanner.start(
+            { facingMode: fallbackFacing },
             scanConfig,
             (decodedText) => handleScannedResult(decodedText),
             () => {}
           );
-          setCameraFacing(oppositeFacing);
+          setCameraFacing(fallbackFacing);
           started = true;
-        } catch (oppErr) {
-          console.warn("Opposite facingMode failed, trying generic video:", oppErr);
+        } catch (fbErr) {
+          console.warn("Opposite camera fallback failed:", fbErr);
         }
       }
 
-      // 4. Last resort: simple device list first camera
-      if (!started && cameras.length > 0) {
-        await scannerRef.current.start(
-          cameras[0].id,
-          scanConfig,
-          (decodedText) => handleScannedResult(decodedText),
-          () => {}
-        );
-        started = true;
+      // Option D: Last resort - query devices and pick the first available video camera
+      if (!started) {
+        const devices = await Html5Qrcode.getCameras();
+        if (devices && devices.length > 0) {
+          // If user wanted back camera, try to find back camera label first
+          let pickedDevice = devices[0];
+          if (targetFacing === "environment") {
+            const backMatch = devices.find((d) => {
+              const l = (d.label || "").toLowerCase();
+              return l.includes("back") || l.includes("rear") || l.includes("environment");
+            });
+            if (backMatch) pickedDevice = backMatch;
+          }
+
+          await scanner.start(
+            pickedDevice.id,
+            scanConfig,
+            (decodedText) => handleScannedResult(decodedText),
+            () => {}
+          );
+          started = true;
+        }
       }
 
-      setIsScanning(true);
-      loadCameras(); // refresh device list once camera access is granted
+      if (started) {
+        setIsScanning(true);
+        setCameraFacing(targetFacing);
+
+        // Check torch capabilities on back camera
+        try {
+          const caps = scanner.getRunningTrackCapabilities() as any;
+          if (caps && caps.torch) {
+            setHasTorch(true);
+          }
+        } catch {}
+
+        // Enumerate all available lenses now that camera permission is granted
+        refreshCameraDevices();
+      } else {
+        throw new Error("Unable to start video stream. Please check camera permissions.");
+      }
     } catch (err: any) {
       console.error("Camera start error:", err);
       const isDenied =
@@ -274,14 +370,35 @@ export function QrAttendanceScanner({ onScanSuccess }: QrAttendanceScannerProps)
         String(err?.message || "").toLowerCase().includes("not found");
 
       if (isDenied) {
-        setCameraError("Camera permission blocked by browser. Please allow camera access in your browser address bar.");
+        setCameraError(
+          "Camera permission was blocked. Please tap the Lock 🔒 icon in your browser address bar and set Camera to 'Allow'."
+        );
         setShowPermissionHelp(true);
       } else if (isNotFound) {
-        setCameraError("No webcam found matching this setting. Try switching between Back and Front Camera.");
+        setCameraError(
+          `No ${targetFacing === "environment" ? "Back" : "Front"} camera found on this device. Try switching cameras or use "Snap with Mobile Camera".`
+        );
       } else {
-        setCameraError(err?.message || "Unable to start webcam. Please ensure no other app (e.g. Zoom/FaceTime) is using your camera.");
+        setCameraError(
+          err?.message ||
+            "Unable to start camera. Please make sure Zoom, Teams, FaceTime, or another tab is not using your camera."
+        );
       }
       setIsScanning(false);
+    }
+  };
+
+  // Toggle Torch / Flashlight on supported mobile back cameras
+  const toggleTorch = async () => {
+    if (!scannerRef.current || !isScanning) return;
+    try {
+      const nextState = !torchOn;
+      await scannerRef.current.applyVideoConstraints({
+        advanced: [{ torch: nextState } as any],
+      });
+      setTorchOn(nextState);
+    } catch (e) {
+      console.warn("Toggle torch failed:", e);
     }
   };
 
@@ -290,12 +407,7 @@ export function QrAttendanceScanner({ onScanSuccess }: QrAttendanceScannerProps)
     const nextFacing = cameraFacing === "environment" ? "user" : "environment";
     setCameraFacing(nextFacing);
     setSelectedCameraId("AUTO");
-
-    if (isScanning) {
-      await startCamera(nextFacing);
-    } else {
-      await startCamera(nextFacing);
-    }
+    await startCamera(nextFacing);
   };
 
   // Select Back Camera
@@ -318,42 +430,38 @@ export function QrAttendanceScanner({ onScanSuccess }: QrAttendanceScannerProps)
 
   // Stop Camera Scanner
   const stopCamera = async () => {
-    if (scannerRef.current && isScanning) {
-      try {
-        await scannerRef.current.stop();
-        setIsScanning(false);
-      } catch (err) {
-        console.warn("Error stopping camera:", err);
-        setIsScanning(false);
-      }
-    }
+    await cleanupScanner();
   };
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (scannerRef.current) {
-        try {
-          if (scannerRef.current.isScanning) {
-            scannerRef.current.stop();
-          }
-        } catch {}
-      }
+      cleanupScanner();
     };
   }, []);
 
-  // Handle Image File Upload Fallback
+  // Handle Image File Upload / Photo Snap Fallback
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     try {
-      const html5QrCode = new Html5Qrcode("qr-file-temp");
+      const html5QrCode = new Html5Qrcode("qr-file-temp", {
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+        verbose: false,
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true,
+        },
+      });
       const decodedText = await html5QrCode.scanFile(file, true);
       handleScannedResult(decodedText);
     } catch (err: any) {
       if (soundEnabled) playAudioChime("error");
-      showToast("No QR Code Detected", "Please upload a clear image of the employee QR badge.", "error");
+      showToast(
+        "No QR Code Detected",
+        "Please hold the camera closer and snap a sharp photo of the employee QR badge.",
+        "error"
+      );
     } finally {
       e.target.value = "";
     }
@@ -374,6 +482,20 @@ export function QrAttendanceScanner({ onScanSuccess }: QrAttendanceScannerProps)
 
   return (
     <div className="space-y-6">
+      {/* Insecure Mobile HTTP Notice (When testing on phone over LAN IP) */}
+      {isInsecureMobile && (
+        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-3">
+          <Info className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-bold text-amber-200">📱 Mobile Local Network Notice:</p>
+            <p className="text-slate-300 text-[11px] leading-relaxed">
+              Mobile browsers (iPhone Safari & Android Chrome) block live webcam video feeds on non-HTTPS IP addresses.
+              You can effortlessly scan badges using the <strong>📸 Snap with Mobile Camera</strong> button below, which opens your phone's native camera directly!
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Top Controller Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-gradient-to-r from-slate-900 via-dark-card to-slate-900 border border-slate-700/80 shadow-glass-dark">
         <div>
@@ -385,7 +507,7 @@ export function QrAttendanceScanner({ onScanSuccess }: QrAttendanceScannerProps)
             Front Desk QR Attendance Terminal
           </h3>
           <p className="text-xs text-slate-400 font-light mt-0.5">
-            Scan employee QR badges via <strong>Back Camera (Rear)</strong> or <strong>Front Camera</strong>.
+            Scan employee QR badges via <strong>Back Camera (Rear)</strong> or <strong>Front Camera (Selfie)</strong>.
           </p>
         </div>
 
@@ -417,13 +539,17 @@ export function QrAttendanceScanner({ onScanSuccess }: QrAttendanceScannerProps)
             className="p-1.5 text-slate-400 hover:text-white rounded-lg transition-colors ml-1"
             title={soundEnabled ? "Mute audio chime" : "Enable audio chime"}
           >
-            {soundEnabled ? <Volume2 className="w-4 h-4 text-emerald-400" /> : <VolumeX className="w-4 h-4 text-slate-500" />}
+            {soundEnabled ? (
+              <Volume2 className="w-4 h-4 text-emerald-400" />
+            ) : (
+              <VolumeX className="w-4 h-4 text-slate-500" />
+            )}
           </button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left / Center Column: Camera Viewfinder & Controls (7 Cols) */}
+        {/* Left Column: Camera Viewfinder & Controls (7 Cols) */}
         <div className="lg:col-span-7 space-y-4">
           <div className="relative overflow-hidden rounded-3xl bg-slate-950 border border-slate-800 shadow-2xl p-4 flex flex-col items-center justify-center min-h-[390px]">
             {/* Camera Facing Selector Pills */}
@@ -438,7 +564,7 @@ export function QrAttendanceScanner({ onScanSuccess }: QrAttendanceScannerProps)
                   }`}
                 >
                   <Camera className="w-3.5 h-3.5" />
-                  <span>Back Camera</span>
+                  <span>Back Camera 📸</span>
                 </button>
                 <button
                   onClick={handleSelectFrontCamera}
@@ -449,24 +575,42 @@ export function QrAttendanceScanner({ onScanSuccess }: QrAttendanceScannerProps)
                   }`}
                 >
                   <User className="w-3.5 h-3.5" />
-                  <span>Front Camera</span>
+                  <span>Front Camera 🤳</span>
                 </button>
               </div>
 
-              {/* Quick Flip Button */}
-              <button
-                onClick={handleFlipCamera}
-                title="Flip Camera (Back ↔ Front)"
-                className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-clinic-400 hover:text-clinic-300 border border-slate-800 transition-all flex items-center gap-1 text-xs font-bold"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline text-[11px]">Flip</span>
-              </button>
+              {/* Quick Flip & Torch Controls */}
+              <div className="flex items-center gap-1">
+                {hasTorch && isScanning && (
+                  <button
+                    onClick={toggleTorch}
+                    title={torchOn ? "Turn off Flashlight" : "Turn on Flashlight"}
+                    className={`p-2 rounded-xl border transition-all ${
+                      torchOn
+                        ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                        : "bg-slate-900 text-slate-400 border-slate-800 hover:text-white"
+                    }`}
+                  >
+                    {torchOn ? <ZapOff className="w-3.5 h-3.5" /> : <Zap className="w-3.5 h-3.5" />}
+                  </button>
+                )}
+                <button
+                  onClick={handleFlipCamera}
+                  title="Flip Camera (Back ↔ Front)"
+                  className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-clinic-400 hover:text-clinic-300 border border-slate-800 transition-all flex items-center gap-1 text-xs font-bold"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline text-[11px]">Flip</span>
+                </button>
+              </div>
             </div>
 
             {/* Viewfinder Container */}
             <div className="relative w-full max-w-[340px] aspect-square rounded-2xl overflow-hidden bg-slate-900 border-2 border-slate-700/80 flex items-center justify-center">
-              <div id={scanContainerId} className="w-full h-full" />
+              <div
+                id={scanContainerId}
+                className="w-full h-full [&_video]:!object-cover [&_video]:!w-full [&_video]:!h-full"
+              />
 
               {!isScanning && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-slate-950/90 backdrop-blur-sm z-10">
@@ -477,7 +621,7 @@ export function QrAttendanceScanner({ onScanSuccess }: QrAttendanceScannerProps)
                     {cameraFacing === "environment" ? "Back Camera Ready" : "Front Camera Ready"}
                   </h4>
                   <p className="text-xs text-slate-400 mb-4 max-w-[240px]">
-                    Click Start Camera to scan employee QR badges.
+                    Click Start Camera to scan employee QR badges live.
                   </p>
                   <button
                     onClick={() => startCamera(cameraFacing)}
@@ -539,7 +683,7 @@ export function QrAttendanceScanner({ onScanSuccess }: QrAttendanceScannerProps)
               {cameras.length > 1 && (
                 <div className="w-full mt-1">
                   <label className="block text-[10px] text-slate-400 font-medium mb-1">
-                    Select Camera Hardware Device:
+                    Select Specific Hardware Lens:
                   </label>
                   <select
                     value={selectedCameraId}
@@ -552,7 +696,9 @@ export function QrAttendanceScanner({ onScanSuccess }: QrAttendanceScannerProps)
                     }}
                     className="w-full px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-300 text-xs focus:outline-none focus:border-clinic-500"
                   >
-                    <option value="AUTO">Auto Detect ({cameraFacing === "environment" ? "Back Camera" : "Front Camera"})</option>
+                    <option value="AUTO">
+                      Auto Detect ({cameraFacing === "environment" ? "Back Camera" : "Front Camera"})
+                    </option>
                     {cameras.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.label}
@@ -579,7 +725,9 @@ export function QrAttendanceScanner({ onScanSuccess }: QrAttendanceScannerProps)
                     <AlertCircle className="w-3.5 h-3.5" />
                     <span>Check Active Apps:</span>
                   </p>
-                  <p>• Make sure you are <strong>not using Zoom, Microsoft Teams, Google Meet, FaceTime, or Skype</strong> in the background.</p>
+                  <p>
+                    • Make sure you are <strong>not using Zoom, Microsoft Teams, Google Meet, FaceTime, or Skype</strong> in the background.
+                  </p>
                   <p>• If another app or browser tab is using your camera, close it and click <strong>Turn On Camera</strong>.</p>
                   <p>• Or tap <strong>Snap with Mobile Camera</strong> below to take a quick photo without webcam locking.</p>
                 </div>
@@ -587,7 +735,7 @@ export function QrAttendanceScanner({ onScanSuccess }: QrAttendanceScannerProps)
                 {showPermissionHelp && (
                   <div className="p-2.5 rounded-lg bg-slate-950/90 border border-rose-500/20 text-[11px] text-slate-300 space-y-1">
                     <p className="font-bold text-rose-300">How to Enable Camera Permission:</p>
-                    <p>1. Look at the left side of your browser URL bar (near <code className="text-white">localhost</code>).</p>
+                    <p>1. Look at the left side of your browser URL bar (near the website address).</p>
                     <p>2. Tap/Click the <strong>Lock 🔒 / Settings / Camera 📷</strong> icon.</p>
                     <p>3. Set <strong>Camera</strong> to <strong>Allow</strong>.</p>
                     <p>4. Refresh the page and start the camera.</p>
@@ -610,9 +758,9 @@ export function QrAttendanceScanner({ onScanSuccess }: QrAttendanceScannerProps)
           {/* Alternative Scan Methods: Phone Camera Snap, Image Upload & Instant Simulator */}
           <div className="space-y-3">
             <div className="flex flex-col sm:flex-row items-center gap-2.5">
-              <label className="w-full flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-clinic-600/20 hover:bg-clinic-600/30 border border-clinic-500/40 text-clinic-300 hover:text-white text-xs font-bold cursor-pointer transition-all shadow-sm">
-                <Camera className="w-4 h-4 text-clinic-400" />
-                <span>Snap with Mobile Camera</span>
+              <label className="w-full flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-gradient-to-r from-clinic-600/30 to-teal-600/30 hover:from-clinic-600/40 hover:to-teal-600/40 border border-clinic-500/50 text-clinic-200 hover:text-white text-xs font-bold cursor-pointer transition-all shadow-md">
+                <Smartphone className="w-4 h-4 text-clinic-400" />
+                <span>Snap with Mobile Camera 📸</span>
                 <input
                   type="file"
                   accept="image/*"
@@ -622,7 +770,7 @@ export function QrAttendanceScanner({ onScanSuccess }: QrAttendanceScannerProps)
                 />
               </label>
 
-              <label className="w-full flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-dark-card border border-slate-700/80 hover:border-slate-600 text-slate-300 hover:text-white text-xs font-semibold cursor-pointer transition-all">
+              <label className="w-full flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-dark-card border border-slate-700/80 hover:border-slate-600 text-slate-300 hover:text-white text-xs font-semibold cursor-pointer transition-all">
                 <Upload className="w-4 h-4 text-slate-400" />
                 <span>Upload from Gallery</span>
                 <input
@@ -634,7 +782,7 @@ export function QrAttendanceScanner({ onScanSuccess }: QrAttendanceScannerProps)
               </label>
 
               {/* Hidden container for file scan processing */}
-              <div id="qr-file-temp" className="hidden" />
+              <div id="qr-file-temp" style={{ display: "none" }} />
             </div>
 
             {/* One-Click QR Badge Test Simulator */}
